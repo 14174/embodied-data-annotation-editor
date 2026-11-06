@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {splitAt,moveBoundary,mergeAt} from '../static/segments.mjs';
+let s=[{start_frame:0,end_frame:600,caption:'取衣',category:''}];
+s=splitAt(s,150);s=splitAt(s,360);
+assert.deepEqual(s.map(x=>[x.start_frame,x.end_frame]),[[0,150],[150,360],[360,600]]);
+assert.equal(splitAt(s,150).length,3);
+assert.equal(splitAt(s,0).length,3);
+let moved=moveBoundary(s,1,180);
+assert.deepEqual(moved.map(x=>[x.start_frame,x.end_frame]),[[0,180],[180,360],[360,600]]);
+assert.equal(moveBoundary(s,1,500)[0].end_frame,359);
+assert.equal(s[0].end_frame,150,'must not mutate undo snapshot');
+let combined=mergeAt([{start_frame:0,end_frame:10,caption:'a'},{start_frame:10,end_frame:20,caption:'b'}],1);
+assert.equal(combined[0].caption,'a\nb');
+assert.equal(combined[0].end_frame,20);
+console.log('PASS: boundary insertion, shared dragging, clamping, immutability, caption preservation');

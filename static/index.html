@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=8"></head>
+<body>
+<div class="top-strip"><strong>机器人数据 · 标注工作台</strong><span>编辑结果单独保存</span><span id="save-status" role="status">正在加载…</span></div>
+<header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions"><button id="undo" title="撤销 Ctrl/Cmd+Z">↶ 撤销</button><button id="redo" title="重做 Ctrl/Cmd+Shift+Z">↷ 重做</button><button id="export">导出 JSON</button><button class="primary" id="submit">提交标注</button></div></header>
+<section class="toolbar">
+<label><span id="episode-selector-label">Episode</span><select id="dataset"></select></label>
+<label>标注类型<select id="kind"><option value="subtask">Subtask · 子任务</option><option value="fine_action">Fine action · 细粒度动作</option></select></label>
+<label>标注人<input id="author" placeholder="填写姓名后按 Enter" maxlength="80" autocomplete="off"></label>
+<div class="instruction"><small>ORIGINAL INSTRUCTION</small><div id="instruction">—</div><span id="episode-info"></span></div>
+</section>
+<div id="notice" role="alert" hidden></div>
+<main>
+<section class="video-panel panel">
+<div id="player">
+  <div id="views" title="点击画面播放或暂停"></div>
+  <div class="player-controls" aria-label="多视角播放控件">
+    <div class="player-control-row">
+      <button id="play" aria-label="播放" title="播放 / 暂停（空格）">▶</button>
+      <span id="clock">0.00 / 0.00 s</span>
+      <button id="fullscreen" aria-label="全屏" title="全屏">⛶</button>
+    </div>
+    <input id="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="播放进度">
+  </div>
+</div>
+<div class="play-toolbar"><button id="prev-segment" disabled>← 上一段</button><button id="next-segment" disabled>下一段 →</button><div class="frame-stepper" role="group" aria-label="按帧移动">
+  <button id="prev-frame" aria-label="后退指定帧数" title="后退（←），长按连续移动">−</button>
+  <input id="frame-step" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="每步移动帧数">
+  <span>帧</span>
+  <button id="next-frame" aria-label="前进指定帧数" title="前进（→），长按连续移动">＋</button>
+</div><label class="inline"><input type="checkbox" id="loop">区间循环</label><select id="speed" aria-label="播放速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select><button id="mark" class="primary mark">＋ 标注 <kbd>M</kbd></button></div>
+<div class="caption-preview" id="caption-preview">点击播放，用“标注”记录动作边界。</div>
+<div class="hints">空格 播放／暂停 · M 打点 · ← → 按步长移动 · 时间轴拖动边界 · 点击右侧文字直接编辑</div>
+</section>
+<aside class="panel captions"><div class="aside-header"><strong>SEGMENTS & CAPTIONS <span id="segment-count"></span></strong><label class="inline"><input type="checkbox" id="follow" checked>跟随播放</label></div><div class="source-bar"><select id="source" aria-label="已有标注来源"><option value="flora">FLORA 预标注</option></select><button id="import">加载</button><button id="blank">从零标注</button></div><div id="segment-list"></div></aside>
+</main>
+<section class="panel timeline-panel"><div class="section-title"><strong>VIDEO TIMELINE</strong><span id="timeline-hint">相邻标注点自动成段 · 拖动分界线调整两侧区间</span><div><button id="zoom-out" aria-label="缩小时间轴">−</button><span id="zoom-label">1×</span><button id="zoom-in" aria-label="放大时间轴">＋</button></div></div><div id="timeline-scroll"><div id="timeline-content"><div id="ruler"></div><div id="segments-track"></div><div id="playhead"><i></i></div></div></div><div class="timeline-footer"><span id="frame-info"></span><span>首尾固定 · 共享边界 · 按帧吸附</span></div></section>
+<details class="panel signals-panel"><summary>机器人状态曲线 <span>与视频时间同步，点击曲线定位</span></summary><div id="signal-options"></div><div id="signal-plots"></div></details>
+<footer><span id="annotation-stats">—</span><span>草稿保存在此浏览器 · 提交后按标注人与类型独立保存</span></footer>
+<dialog id="overwrite-dialog" aria-labelledby="overwrite-title">
+  <form method="dialog">
+    <h2 id="overwrite-title">覆盖已有标注？</h2>
+    <p id="overwrite-message"></p>
+    <div class="dialog-actions">
+      <button value="yes" class="primary">是</button>
+      <button value="no">否</button>
+      <button value="cancel" autofocus>取消</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="categories"></datalist>
+<script type="module" src="/editor-static/app.mjs?v=8"></script>
+</body></html>
