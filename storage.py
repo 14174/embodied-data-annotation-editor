@@ -11,6 +11,19 @@ TYPES = {'subtask', 'fine_action'}
 WRITE_LOCK = Lock()
 
 
+def next_episode(root, indexes, current, kind):
+    """Prefer another episode without a submitted annotation of this type."""
+    if kind not in TYPES:
+        raise ValueError('标注类型无效')
+    indexes = sorted(indexes)
+    ordered = [i for i in indexes if i > current] + [i for i in indexes if i < current]
+    for index in ordered:
+        directory = root / f'episode_{index:06d}' / kind
+        if not any(path.is_file() for path in directory.glob('*.json')):
+            return {'episode_index': index, 'unannotated': True}
+    return {'episode_index': ordered[0] if ordered else None, 'unannotated': False}
+
+
 class AnnotationConflict(Exception):
     def __init__(self, created_at):
         self.created_at = created_at

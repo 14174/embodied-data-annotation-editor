@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from storage import AnnotationConflict, AnnotationStore
+from storage import AnnotationConflict, AnnotationStore, next_episode
 from v3_dataset import ReviewDataset
 
 
@@ -41,6 +41,14 @@ def create_app(root, output):
     def info(episode: int = 0):
         get_episode(episode)
         return dataset.info(episode)
+
+    @app.get('/editor-api/next-episode')
+    def next_unannotated(episode: int = 0, kind: str = 'subtask'):
+        get_episode(episode)
+        try:
+            return next_episode(output, dataset.rows, episode, kind)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
 
     @app.get('/editor-api/video')
     def video(camera: str, episode: int = 0):

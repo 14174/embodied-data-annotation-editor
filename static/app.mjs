@@ -39,8 +39,40 @@ function persist() {
   try {
     localStorage.setItem(draftKey(), JSON.stringify(snapshot()));
     status('本地草稿已保存');
+    return true;
   } catch {
     status('本地草稿保存失败');
+    return false;
+  }
+}
+
+function switchEpisode(value) {
+  if (saving || loading) return;
+  if (!persist()) {
+    $('dataset').value = String(info.episode_index);
+    warn('当前草稿保存失败，已保留在页面中。请导出 JSON 后再切换。');
+    return;
+  }
+  const url = new URL(location.href);
+  url.searchParams.set('episode', value);
+  url.searchParams.set('kind', kind);
+  location.href = url.href;
+}
+
+async function nextEpisode() {
+  if (saving || loading) return;
+  const button = $('next-episode');
+  const requestedKind = kind;
+  button.disabled = true;
+  try {
+    const next = await api('next-episode?' + new URLSearchParams({kind}));
+    if (kind !== requestedKind) return;
+    if (next.episode_index === null) warn('没有其他 episode 可切换。');
+    else switchEpisode(next.episode_index);
+  } catch (error) {
+    warn('读取下一条失败：' + error.message);
+  } finally {
+    button.disabled = !info.episodes || info.episodes.length < 2;
   }
 }
 function seek(target) {
@@ -591,11 +623,9 @@ function wire() {
   $('author').onchange = updateAuthor;
   $('author').onkeydown = event => { if (event.key === 'Enter') $('author').blur(); };
   $('kind').onchange = context;
-  $('dataset').onchange = event => {
-    const url = new URL(location.href);
-    url.searchParams.set('episode', event.target.value);
-    location.href = url.href;
-  };
+  $('dataset').onchange = event => switchEpisode(event.target.value);
+  $('next-episode').onclick = nextEpisode;
+  $('next-episode').disabled = !info.episodes || info.episodes.length < 2;
   $('submit').onclick = submit;
   $('import').onclick = importSource;
   $('blank').onclick = () => change(blank(),null);
@@ -633,6 +663,8 @@ async function init() {
     (episode.frame_count / info.fps).toFixed(1) + ' s', String(episode.episode_index))));
   $('dataset').value = String(info.episode_index);
   $('author').value = localStorage.getItem('annotation-editor-author') || '';
+  const requestedKind = new URLSearchParams(location.search).get('kind');
+  if (['subtask', 'fine_action'].includes(requestedKind)) $('kind').value = requestedKind;
   $('instruction').textContent = info.instruction || '—';
   $('episode-info').textContent = 'Episode ' + info.episode_index + ' · ' + info.frame_count + ' 帧 · ' + duration().toFixed(2) + ' s';
   $('scrub').max = info.frame_count - 1;

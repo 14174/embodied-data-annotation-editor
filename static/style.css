@@ -17,6 +17,9 @@
   }
 }
 
+.episode-navigation { display: flex; align-items: center; gap: 7px; }
+#next-episode { color: var(--text); }
+
 #player {
   position: relative;
   background: #030609;
