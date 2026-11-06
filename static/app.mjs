@@ -326,6 +326,7 @@ function renderCards() {
     const card = document.createElement('article');
     card.className = 'segment-card';
     card.dataset.segment = i;
+    card.onclick = () => selectSegment(i);
     card.style.setProperty('--color',colors[i % colors.length]);
     const head = document.createElement('div');
     head.className = 'card-head';
@@ -333,12 +334,14 @@ function renderCards() {
     number.textContent = String(i+1).padStart(2,'0');
     const timestamp = document.createElement('button');
     timestamp.className = 'time-btn';
-    timestamp.onclick = () => selectSegment(i);
     head.append(number,timestamp);
     if (i) {
       const merge = document.createElement('button');
       merge.textContent = '与上一段合并';
-      merge.onclick = () => change(mergeAt(segments,i));
+      merge.onclick = event => {
+        event.stopPropagation();
+        change(mergeAt(segments,i));
+      };
       head.append(merge);
     }
     card.append(head);
