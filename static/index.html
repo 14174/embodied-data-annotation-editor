@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=10"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=11"></head>
 <body>
 <div class="top-strip"><strong>机器人数据 · 标注工作台</strong><span>编辑结果单独保存</span><span id="save-status" role="status">正在加载…</span></div>
-<header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions"><button id="undo" title="撤销 Ctrl/Cmd+Z">↶ 撤销</button><button id="redo" title="重做 Ctrl/Cmd+Shift+Z">↷ 重做</button><button id="export">导出 JSON</button><button class="primary" id="submit">提交标注</button></div></header>
+<header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions"><button id="undo" title="撤销 Ctrl/Cmd+Z">↶ 撤销</button><button id="redo" title="重做 Ctrl/Cmd+Shift+Z">↷ 重做</button><button id="export">导出 JSON</button><button class="primary" id="submit">提交标注</button><button id="next-episode-header" type="button" title="优先切换到当前类型尚无人提交人工标注的 episode" disabled>下一条 →</button></div></header>
 <section class="toolbar">
 <label><span id="episode-selector-label">Episode</span><span class="episode-navigation"><select id="dataset"></select><button id="next-episode" type="button" title="优先切换到当前类型尚无人提交人工标注的 episode" disabled>下一条 →</button></span></label>
 <label>标注类型<select id="kind"><option value="subtask">Subtask · 子任务</option><option value="fine_action">Fine action · 细粒度动作</option></select></label>
@@ -50,5 +50,5 @@
   </form>
 </dialog>
 <datalist id="categories"></datalist>
-<script type="module" src="/editor-static/app.mjs?v=10"></script>
+<script type="module" src="/editor-static/app.mjs?v=11"></script>
 </body></html>

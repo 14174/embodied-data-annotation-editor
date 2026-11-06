@@ -62,9 +62,9 @@ function switchEpisode(value) {
 
 async function nextEpisode() {
   if (saving || loading) return;
-  const button = $('next-episode');
+  const buttons = ['next-episode', 'next-episode-header'].map($);
   const requestedKind = kind;
-  button.disabled = true;
+  buttons.forEach(button => { button.disabled = true; });
   try {
     const next = await api('next-episode?' + new URLSearchParams({kind}));
     if (kind !== requestedKind) return;
@@ -74,7 +74,7 @@ async function nextEpisode() {
   } catch (error) {
     warn('读取下一条失败：' + error.message);
   } finally {
-    button.disabled = !info.episodes || info.episodes.length < 2;
+    buttons.forEach(button => { button.disabled = !info.episodes || info.episodes.length < 2; });
   }
 }
 function seek(target) {
@@ -656,8 +656,10 @@ function wire() {
   $('author').onkeydown = event => { if (event.key === 'Enter') $('author').blur(); };
   $('kind').onchange = () => { context(); refreshAnnotations(); };
   $('dataset').onchange = event => switchEpisode(event.target.value);
-  $('next-episode').onclick = nextEpisode;
-  $('next-episode').disabled = !info.episodes || info.episodes.length < 2;
+  for (const id of ['next-episode', 'next-episode-header']) {
+    $(id).onclick = nextEpisode;
+    $(id).disabled = !info.episodes || info.episodes.length < 2;
+  }
   $('submit').onclick = submit;
   $('import').onclick = importSource;
   $('blank').onclick = () => change(blank(),null);
