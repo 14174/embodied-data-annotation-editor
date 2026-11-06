@@ -1,19 +1,21 @@
 # Embodied Data Annotation Editor
 
-在浏览器里同步查看机器人多视角视频，把一条操作记录切成动作片段，为每段填写 caption。可从空白时间轴开始，也可以加载 FLORA 预标注或已有人工标注再修订。
+**English** | [简体中文](README.zh-CN.md)
 
-![编辑器界面。左侧同步播放三个相机视角，右侧编辑分段 caption，底部时间轴可拖动分界线。](docs/images/editor-screenshot.png)
+Annotate multi-view robot videos in your browser. Split a recorded episode into action segments and write a caption for each one. Start from scratch or revise FLORA predictions or a saved human annotation.
 
-## 怎么标注
+![Annotation editor with three synchronized camera views, editable segment captions, and a timeline with draggable boundaries.](docs/images/editor-screenshot.png)
 
-1. **选择 episode 和标注类型。** 顶部选择子任务（Subtask）或细粒度动作（Fine action），右侧下拉框可加载已有结果。
-2. **看视频、切片段。** 点击画面或按空格播放／暂停。点击「标注」或按 `M` 在当前帧切段。用「上一段／下一段」跳转，或输入帧步长并短按、长按 `−`／`＋` 定位。可展开状态曲线对照视频。
-3. **调整边界和文字。** 拖动底部时间轴的分界线，两侧片段会一起更新。右侧可直接改 caption、填写细粒度动作类别，或把当前段与上一段合并。
-4. **保存结果。** 草稿自动保存在当前浏览器。填写标注人后可提交或导出 JSON。提交按 episode、标注人、标注类型区分，覆盖已有提交前会询问。
+## Annotation workflow
 
-## 运行
+1. **Choose an episode and annotation type.** Select Subtask or Fine action. To start from an existing result, choose it in the dropdown on the right and click Load.
+2. **Play the video and mark boundaries.** Click a camera view or press Space to play or pause. Click the annotation button or press `M` to split at the current frame. Jump between segments, or set a frame step and tap or hold `−` / `+` to move by that step. Expand the state plots to compare signals with the video.
+3. **Refine segments and captions.** Drag a shared boundary on the timeline to update both adjacent segments. Edit captions and fine-action categories in the right panel, or merge a segment with the previous one.
+4. **Save your work.** The browser saves drafts automatically. Enter an annotator name to submit, or export the annotation as JSON. Submissions are keyed by episode, annotator, and annotation type. Replacing an existing submission requires confirmation.
 
-需要 Python 3.10 或更新版本。
+## Run locally
+
+Python 3.10 or later is required.
 
 ```sh
 python3 -m venv .venv
@@ -22,13 +24,13 @@ python -m pip install -r requirements.txt
 python full_server.py /path/to/dataset ./annotations
 ```
 
-打开 [http://127.0.0.1:8000/editor](http://127.0.0.1:8000/editor)。输出目录应位于数据集目录之外。服务默认监听本机；标注人姓名用于署名，服务未提供账号认证。
+Open [http://127.0.0.1:8000/editor](http://127.0.0.1:8000/editor). Choose an output directory outside the dataset directory. The server listens on localhost by default. Annotator names identify submissions; the editor does not authenticate users.
 
-## 数据格式
+## Dataset format
 
-下面用一条 **2 秒、30 fps、60 帧、两个相机视角**的 episode 举例。编辑器读取带相机索引的 LeRobot v3 风格目录，每个 MP4 对应一个视角的一条完整 episode。编号从 `0` 开始。
+This example uses one **2-second, 60-frame episode at 30 fps** with two camera views. The editor reads a LeRobot v3-style layout with a per-episode camera index. Each MP4 contains one complete episode from one camera. Episode numbering starts at `0`.
 
-### 目录结构
+### Directory layout
 
 ```text
 example_dataset/
@@ -41,13 +43,13 @@ example_dataset/
 │   │   └── chunk-000/file-000.mp4
 │   └── observation.images.left_wrist/
 │       └── chunk-000/file-000.mp4
-├── data/                              # 可选，状态曲线数据
+├── data/                              # Optional state data
 │   └── chunk-000/file-000.parquet
-└── output/                            # 可选，已有预标注
+└── output/                            # Optional pre-annotations
     └── flora/episode_000000/caption.json
 ```
 
-### 1. 数据集配置 · `meta/info.json`
+### 1. Dataset configuration · `meta/info.json`
 
 ```json
 {
@@ -57,17 +59,17 @@ example_dataset/
 }
 ```
 
-路径模板中的 `video_key` 来自相机列表，`chunk_index` 和 `file_index` 来自下面的 episode 索引。状态文件和视频使用各自的索引。
+The path templates use `video_key` from the camera list and `chunk_index` and `file_index` from the episode index below. Video files and state files have separate indexes.
 
-### 2. Episode 索引 · `meta/episodes/chunk-000/file-000.parquet`
+### 2. Episode index · `meta/episodes/chunk-000/file-000.parquet`
 
-下方 JSON 展示 **Parquet 的一行**，每个键都是独立列。两个 `viewer/*_json` 字段存的是 JSON **字符串**，写入 Parquet 前先用 `json.dumps()` 序列化。
+The JSON object below represents **one Parquet row**. Each key is a separate column. Store the two `viewer/*_json` fields as JSON **strings**, for example by calling `json.dumps()` before writing the Parquet file.
 
 ```json
 {
   "episode_index": 0,
   "length": 60,
-  "tasks": ["把方块放进托盘"],
+  "tasks": ["Place the block in the tray"],
   "viewer/cameras_json": "[\"observation.images.scene\", \"observation.images.left_wrist\"]",
   "videos/observation.images.scene/chunk_index": 0,
   "videos/observation.images.scene/file_index": 0,
@@ -83,11 +85,11 @@ example_dataset/
 }
 ```
 
-`length` 是帧数，视频时间戳以秒为单位，范围是 `0` 到 `length / fps`。每个相机分别填写四个 `videos/<camera>/...` 字段。`tasks` 可选，页面显示列表中的第一项。没有状态数据时，可省略 `viewer/signals_json` 和两个 `data/*` 索引列。
+`length` is the frame count. Video timestamps are in seconds, from `0` to `length / fps`. Provide the four `videos/<camera>/...` columns for each camera. The optional `tasks` list supplies the instruction shown in the editor; only the first item is displayed. If you have no state data, omit `viewer/signals_json` and both `data/*` index columns.
 
-### 3. 状态曲线（可选） · `data/chunk-000/file-000.parquet`
+### 3. State data (optional) · `data/chunk-000/file-000.parquet`
 
-每帧一行。这个例子有 60 行，`frame_index` 为 `0–59`；每行 `observation.state` 有两个值，分别对应上面的 `gripper_x` 和 `gripper_width`。
+Write one row per frame. This file has 60 rows, with `frame_index` from `0` to `59`. The two values in each `observation.state` entry correspond to `gripper_x` and `gripper_width` as declared above.
 
 | episode_index | frame_index | observation.state |
 | ---: | ---: | --- |
@@ -96,25 +98,25 @@ example_dataset/
 | 0 | … | … |
 | 0 | 59 | `[0.31, 0.04]` |
 
-### 4. 预标注（可选） · `output/flora/episode_000000/caption.json`
+### 4. Pre-annotations (optional) · `output/flora/episode_000000/caption.json`
 
 ```json
 {
   "fps": 30,
   "result": {
     "segments": [
-      {"start_frame": 0, "end_frame": 30, "caption": "夹起方块"},
-      {"start_frame": 30, "end_frame": 60, "caption": "把方块放进托盘"}
+      {"start_frame": 0, "end_frame": 30, "caption": "Pick up the block"},
+      {"start_frame": 30, "end_frame": 60, "caption": "Place the block in the tray"}
     ]
   }
 }
 ```
 
-区间采用 `[start_frame, end_frame)`。第一段覆盖第 0–29 帧，第二段覆盖第 30–59 帧，末尾边界写 `60`。各段连续覆盖整条 episode；预标注帧率不同时，编辑器按时间换算到视频帧率。
+Intervals are half-open: `[start_frame, end_frame)`. The first segment covers frames 0–29 and the second covers frames 30–59, so the final boundary is `60`. Segments cover the entire episode without gaps or overlaps. If the pre-annotation frame rate differs from the video frame rate, the editor converts boundaries by time.
 
-人工提交写到启动命令指定的独立目录，例如 `annotations/episode_000000/subtask/<标注人姓名的哈希>.json`。`fine_action` 类型保存到同级的 `fine_action/` 目录。
+Human submissions are written to the output directory passed at startup, for example `annotations/episode_000000/subtask/<annotator-name-hash>.json`. Fine-action submissions go in the sibling `fine_action/` directory.
 
-## 测试
+## Tests
 
 ```sh
 python -m unittest discover -s tests
