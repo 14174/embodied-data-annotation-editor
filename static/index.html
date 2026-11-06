@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=9"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=10"></head>
 <body>
 <div class="top-strip"><strong>机器人数据 · 标注工作台</strong><span>编辑结果单独保存</span><span id="save-status" role="status">正在加载…</span></div>
 <header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions"><button id="undo" title="撤销 Ctrl/Cmd+Z">↶ 撤销</button><button id="redo" title="重做 Ctrl/Cmd+Shift+Z">↷ 重做</button><button id="export">导出 JSON</button><button class="primary" id="submit">提交标注</button></div></header>
@@ -33,7 +33,7 @@
 <div class="caption-preview" id="caption-preview">点击播放，用“标注”记录动作边界。</div>
 <div class="hints">空格 播放／暂停 · M 打点 · ← → 按步长移动 · 时间轴拖动边界 · 点击右侧文字直接编辑</div>
 </section>
-<aside class="panel captions"><div class="aside-header"><strong>SEGMENTS & CAPTIONS <span id="segment-count"></span></strong><label class="inline"><input type="checkbox" id="follow" checked>跟随播放</label></div><div class="source-bar"><select id="source" aria-label="已有标注来源"><option value="flora">FLORA 预标注</option></select><button id="import">加载</button><button id="blank">从零标注</button></div><div id="segment-list"></div></aside>
+<aside class="panel captions"><div class="aside-header"><strong>SEGMENTS & CAPTIONS <span id="segment-count"></span></strong><label class="inline"><input type="checkbox" id="follow" checked>跟随播放</label></div><div class="source-bar"><select id="source" aria-label="已有标注来源"><option value="flora">FLORA 预标注</option></select><span id="human-annotation-count" role="status" aria-live="polite">人工标注：—</span><button id="import">加载</button><button id="blank">从零标注</button></div><div id="segment-list"></div></aside>
 </main>
 <section class="panel timeline-panel"><div class="section-title"><strong>VIDEO TIMELINE</strong><span id="timeline-hint">相邻标注点自动成段 · 拖动分界线调整两侧区间</span><div><button id="zoom-out" aria-label="缩小时间轴">−</button><span id="zoom-label">1×</span><button id="zoom-in" aria-label="放大时间轴">＋</button></div></div><div id="timeline-scroll"><div id="timeline-content"><div id="ruler"></div><div id="segments-track"></div><div id="playhead"><i></i></div></div></div><div class="timeline-footer"><span id="frame-info"></span><span>首尾固定 · 共享边界 · 按帧吸附</span></div></section>
 <details class="panel signals-panel"><summary>机器人状态曲线 <span>与视频时间同步，点击曲线定位</span></summary><div id="signal-options"></div><div id="signal-plots"></div></details>
@@ -50,5 +50,5 @@
   </form>
 </dialog>
 <datalist id="categories"></datalist>
-<script type="module" src="/editor-static/app.mjs?v=9"></script>
+<script type="module" src="/editor-static/app.mjs?v=10"></script>
 </body></html>

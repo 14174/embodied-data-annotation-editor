@@ -8,10 +8,12 @@ Annotate multi-view robot videos in your browser. Split a recorded episode into 
 
 ## Annotation workflow
 
-1. **Choose an episode and annotation type.** Select Subtask or Fine action. Click **Next episode** to prefer an episode with no submitted human annotation of that type, searching forward and wrapping around; if the other episodes are all annotated, it opens the next episode in order. Model labels and browser drafts do not count as submissions. Your draft and annotation type are retained when switching. To start from an existing result, choose it in the dropdown on the right and click Load.
+1. **Choose an episode and annotation type.** Select Subtask or Fine action. Click **Next episode** to prefer an episode with no submitted human annotation of that type, searching forward and wrapping around; if the other episodes are all annotated, it stays on the current page and prompts you to choose manually for repeat annotation. Model labels and browser drafts do not count as submissions. Your draft and annotation type are retained when switching. To start from an existing result, choose it in the dropdown on the right and click Load.
 2. **Play the video and mark boundaries.** Click a camera view or press Space to play or pause. Click the annotation button or press `M` to split at the current frame. Jump between segments, or set a frame step and tap or hold `−` / `+` to move by that step. Expand the state plots to compare signals with the video.
 3. **Refine segments and captions.** Drag a shared boundary on the timeline to update both adjacent segments. Edit captions and fine-action categories in the right panel, or merge a segment with the previous one.
 4. **Save your work.** The browser saves drafts automatically. Enter an annotator name to submit, or export the annotation as JSON. Submissions are keyed by episode, annotator, and annotation type. Replacing an existing submission requires confirmation.
+
+The source selector shows the submitted human annotation count for the current type. It refreshes every 3 seconds while the page is visible, on return to the page, on type changes, and after submission. Refreshing only updates the count and available sources; it preserves your current edits and source selection. Next episode checks the server on every click. Episodes are not reserved: two people who opened the same episode before either submitted can still submit independently.
 
 ## Run locally
 
@@ -121,4 +123,5 @@ Human submissions are written to the output directory passed at startup, for exa
 ```sh
 python -m unittest discover -s tests
 node tests/segments.test.mjs
+node tests/annotations.test.mjs
 ```

@@ -19,6 +19,11 @@
 
 .episode-navigation { display: flex; align-items: center; gap: 7px; }
 #next-episode { color: var(--text); }
+#human-annotation-count { flex: 0 0 auto; align-self: center; color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 600px) {
+  .source-bar { flex-wrap: wrap; }
+  .source-bar select { min-width: 140px; }
+}
 
 #player {
   position: relative;

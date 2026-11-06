@@ -9,7 +9,7 @@ function apiUrl(path) {
   return url;
 }
 const api = async (path, options) => {
-  const response = await fetch(apiUrl(path), options);
+  const response = await fetch(apiUrl(path), {cache:'no-store', ...options});
   if (!response.ok) {
     const {detail} = await response.json().catch(() => ({}));
     const message = typeof detail === 'string' ? detail : detail?.message;
@@ -21,6 +21,7 @@ let info, preset, signals;
 let segments = [], past = [], future = [], submitted = [];
 let author = '', kind = 'subtask', source = null, videos = [], active = -1, zoom = 1, drag = null;
 let loading = false, saving = false;
+let humanAnnotationCount = 0, annotationRead = 0;
 const master = () => videos[0];
 const duration = () => info.frame_count / info.fps;
 const frame = () => Math.min(info.frame_count - 1, Math.floor((master()?.currentTime || 0) * info.fps + 0.0001));
@@ -68,6 +69,7 @@ async function nextEpisode() {
     const next = await api('next-episode?' + new URLSearchParams({kind}));
     if (kind !== requestedKind) return;
     if (next.episode_index === null) warn('没有其他 episode 可切换。');
+    else if (!next.unannotated) warn('其余 episode 的当前类型都已有人工标注。如需复标，请从顶部列表手动选择。');
     else switchEpisode(next.episode_index);
   } catch (error) {
     warn('读取下一条失败：' + error.message);
@@ -410,9 +412,40 @@ function ruler() {
 }
 function sourceChoices() {
   const records = submitted.filter(r => r.annotation_type === kind);
-  $('annotation-stats').textContent = kind + ' · ' + records.length + ' 份已提交';
-  $('source').replaceChildren(...(kind === 'subtask' && preset.result.segments.length ? [new Option('FLORA 预标注','flora')] : []),
-    ...records.map(r => new Option(r.annotator + ' 的标注', 'person:' + r.annotator)));
+  humanAnnotationCount = new Set(records.map(r => r.annotator)).size;
+  $('human-annotation-count').textContent = '人工标注：' + humanAnnotationCount + ' 份';
+  $('human-annotation-count').title = '当前标注类型下已提交的人工标注人数；预标注与本地草稿不计入。每 3 秒自动同步。';
+  $('annotation-stats').textContent = kind + ' · ' + humanAnnotationCount + ' 份已提交';
+  const select = $('source'), selected = select.value;
+  const options = [...(kind === 'subtask' && preset.result.segments.length ? [new Option('FLORA 预标注','flora')] : []),
+    ...records.map(r => new Option(r.annotator + ' 的标注', 'person:' + r.annotator))];
+  if (select.options.length !== options.length || options.some((option,i) =>
+      option.value !== select.options[i].value || option.text !== select.options[i].text)) {
+    select.replaceChildren(...options);
+    if (options.some(option => option.value === selected)) select.value = selected;
+  }
+}
+async function refreshAnnotations() {
+  const request = ++annotationRead;
+  try {
+    const records = await api('annotations');
+    if (request !== annotationRead) return false;
+    if (!Array.isArray(records)) throw Error('标注列表格式无效');
+    submitted = records;
+    sourceChoices();
+    return true;
+  } catch {
+    if (request === annotationRead) {
+      $('human-annotation-count').textContent = '人工标注：' + humanAnnotationCount + ' 份 · 同步失败';
+      $('human-annotation-count').title = '显示上次同步的数量，连接恢复后自动重试；正在编辑的内容保留。';
+    }
+    return false;
+  }
+}
+function startAnnotationSync() {
+  setInterval(() => { if (!document.hidden) return refreshAnnotations(); }, 3000);
+  window.addEventListener('focus', () => refreshAnnotations());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAnnotations(); });
 }
 function updateAuthor() {
   author = $('author').value.trim();
@@ -490,8 +523,7 @@ async function submit() {
     }
     localStorage.removeItem(draftKey());
     status('已提交');
-    submitted = await api('annotations');
-    sourceChoices();
+    await refreshAnnotations();
   } catch(error) { warn(error.message); }
   finally { saving = false; updateButtons(); }
 }
@@ -622,7 +654,7 @@ function wire() {
   $('redo').onclick = () => restore(future,past);
   $('author').onchange = updateAuthor;
   $('author').onkeydown = event => { if (event.key === 'Enter') $('author').blur(); };
-  $('kind').onchange = context;
+  $('kind').onchange = () => { context(); refreshAnnotations(); };
   $('dataset').onchange = event => switchEpisode(event.target.value);
   $('next-episode').onclick = nextEpisode;
   $('next-episode').disabled = !info.episodes || info.episodes.length < 2;
@@ -657,11 +689,13 @@ function wire() {
 }
 async function init() {
   [info,preset,submitted] = await Promise.all([api('info'),api('source'),api('annotations')]);
-  $('episode-selector-label').textContent = 'Episode（共 ' + info.episodes.length + ' 条）';
-  $('dataset').replaceChildren(...info.episodes.map(episode => new Option(
-    'Episode ' + String(episode.episode_index).padStart(3,'0') + ' · ' +
-    (episode.frame_count / info.fps).toFixed(1) + ' s', String(episode.episode_index))));
-  $('dataset').value = String(info.episode_index);
+  {
+    $('episode-selector-label').textContent = 'Episode（共 ' + info.episodes.length + ' 条）';
+    $('dataset').replaceChildren(...info.episodes.map(episode => new Option(
+      'Episode ' + String(episode.episode_index).padStart(3,'0') + ' · ' +
+      (episode.frame_count / info.fps).toFixed(1) + ' s', String(episode.episode_index))));
+    $('dataset').value = String(info.episode_index);
+  }
   $('author').value = localStorage.getItem('annotation-editor-author') || '';
   const requestedKind = new URLSearchParams(location.search).get('kind');
   if (['subtask', 'fine_action'].includes(requestedKind)) $('kind').value = requestedKind;
@@ -673,6 +707,7 @@ async function init() {
   wire();
   updateAuthor();
   context();
+  startAnnotationSync();
   requestAnimationFrame(tick);
   try {
     signals = await api('signals');

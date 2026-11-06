@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from storage import AnnotationConflict, AnnotationStore, next_episode
@@ -43,7 +43,8 @@ def create_app(root, output):
         return dataset.info(episode)
 
     @app.get('/editor-api/next-episode')
-    def next_unannotated(episode: int = 0, kind: str = 'subtask'):
+    def next_unannotated(response: Response, episode: int = 0, kind: str = 'subtask'):
+        response.headers['Cache-Control'] = 'no-store'
         get_episode(episode)
         try:
             return next_episode(output, dataset.rows, episode, kind)
@@ -83,7 +84,8 @@ def create_app(root, output):
         return data
 
     @app.get('/editor-api/annotations')
-    def annotations(episode: int = 0):
+    def annotations(response: Response, episode: int = 0):
+        response.headers['Cache-Control'] = 'no-store'
         return [
             {'annotator': record['annotator'], 'annotation_type': record['annotation_type'],
              'created_at': record['created_at'], 'segments': len(record['result']['segments'])}
