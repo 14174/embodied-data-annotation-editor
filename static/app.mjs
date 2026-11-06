@@ -622,7 +622,15 @@ function drawSignals(at) {
   }
   lastSignalFrame = at;
 }
+function showHelp() {
+  const dialog = $('help-dialog');
+  if (dialog.open) return;
+  videos.forEach(video => video.pause());
+  dialog.showModal();
+}
 function wire() {
+  $('open-help').onclick = showHelp;
+  $('close-help').onclick = () => $('help-dialog').close();
   $('play').onclick = togglePlay;
   $('prev-segment').onclick = () => selectSegment(active - 1);
   $('next-segment').onclick = () => selectSegment(active + 1);
@@ -676,6 +684,7 @@ function wire() {
     setTimeout(() => URL.revokeObjectURL(url),1000);
   };
   document.addEventListener('keydown', event => {
+    if ($('help-dialog').open || $('overwrite-dialog').open) return;
     if (event.target.matches('textarea,input,select,[contenteditable]')) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();

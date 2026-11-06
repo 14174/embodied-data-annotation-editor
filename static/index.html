@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=12"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=13"></head>
 <body>
 <div class="top-strip"><strong>机器人数据 · 标注工作台</strong><span>编辑结果单独保存</span><span id="save-status" role="status">正在加载…</span></div>
-<header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions"><button id="undo" title="撤销 Ctrl/Cmd+Z">↶ 撤销</button><button id="redo" title="重做 Ctrl/Cmd+Shift+Z">↷ 重做</button><button id="export">导出 JSON</button><button class="primary" id="submit">提交标注</button><button id="next-episode-header" type="button" title="优先切换到当前类型尚无人提交人工标注的 episode" disabled>下一条 →</button></div></header>
+<header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions"><button id="open-help" type="button" aria-haspopup="dialog" aria-controls="help-dialog">使用说明</button><button id="undo" title="撤销 Ctrl/Cmd+Z">↶ 撤销</button><button id="redo" title="重做 Ctrl/Cmd+Shift+Z">↷ 重做</button><button id="export">导出 JSON</button><button class="primary" id="submit">提交标注</button><button id="next-episode-header" type="button" title="优先切换到当前类型尚无人提交人工标注的 episode" disabled>下一条 →</button></div></header>
 <section class="toolbar">
 <label><span id="episode-selector-label">Episode</span><span class="episode-navigation"><select id="dataset"></select><button id="next-episode" type="button" title="优先切换到当前类型尚无人提交人工标注的 episode" disabled>下一条 →</button></span></label>
 <label>标注类型<select id="kind"><option value="subtask">Subtask · 子任务</option><option value="fine_action">Fine action · 细粒度动作</option></select></label>
@@ -38,6 +38,72 @@
 <section class="panel timeline-panel"><div class="section-title"><strong>VIDEO TIMELINE</strong><span id="timeline-hint">相邻标注点自动成段 · 拖动分界线调整两侧区间</span><div><button id="zoom-out" aria-label="缩小时间轴">−</button><span id="zoom-label">1×</span><button id="zoom-in" aria-label="放大时间轴">＋</button></div></div><div id="timeline-scroll"><div id="timeline-content"><div id="ruler"></div><div id="segments-track"></div><div id="playhead"><i></i></div></div></div><div class="timeline-footer"><span id="frame-info"></span><span>首尾固定 · 共享边界 · 按帧吸附</span></div></section>
 <details class="panel signals-panel"><summary>机器人状态曲线 <span>与视频时间同步，点击曲线定位</span></summary><div id="signal-options"></div><div id="signal-plots"></div></details>
 <footer><span id="annotation-stats">—</span><span>草稿保存在此浏览器 · 提交后按标注人与类型独立保存</span></footer>
+<dialog id="help-dialog" aria-labelledby="help-title">
+  <div class="help-header"><h2 id="help-title">使用说明</h2><button id="close-help" type="button" aria-label="关闭使用说明">关闭 ×</button></div>
+  <div class="help-body">
+    <p class="help-intro">先选择标注类型和 episode，对照视频核对分段与文字，填写标注人后提交。模型预标注只是起稿，需人工检查。</p>
+    <section><h3>1. 署名与“登录”规则</h3>
+      <ul>
+        <li>当前没有账号密码或登录认证。顶部“标注人”用于提交署名，请每次使用同一个、能区分同事的姓名或代号，避免同名。</li>
+        <li>可以先编辑，提交前再填写姓名。修改姓名不会加载别人的结果，也不会替换当前编辑内容。</li>
+        <li>姓名只用于区分记录，不验证身份。请只用自己的署名提交；查看或续标他人的结果，请从右侧来源下拉框选择后点击“加载”。</li>
+      </ul>
+    </section>
+    <section><h3>2. 开始标注与切换 episode</h3>
+      <ol>
+        <li>选择 Subtask（子任务）或 Fine action（细粒度动作），再选择 episode。</li>
+        <li>可以使用 FLORA 预标注、选择他人结果后点击“加载”，也可以点击“从零标注”。加载来源或从零开始会替换当前编辑，可用“撤销”回退。</li>
+        <li>先完整观看视频，再调整边界和 caption。点击右侧任意分段框或文字区域，视频会跳到该段起点。</li>
+        <li>点击“下一条”优先查找当前类型下尚无人提交人工标注的其他 episode；从当前位置向后循环查找。若其余都已标注，会停留提示，需要复标时手动选择。</li>
+      </ol>
+    </section>
+    <section><h3>3. 分段与 caption 规则</h3>
+      <ul>
+        <li><strong>工具约束：</strong>每份标注独立覆盖整条 episode；片段连续、不重叠、不留空白，边界按整数帧对齐，首尾固定。每段 caption 必填，细粒度动作还需填写动作类别。</li>
+        <li><strong>两种类型独立：</strong>Subtask 与 Fine action 不分父子层级，边界无需对齐，可以只提交其中一种。</li>
+        <li><strong>试标粒度建议：</strong>Subtask 按完整操作目标切分，如“拿起黄色鸭子”；同一目标下连续的靠近、张开夹爪、对准、夹取和抬起通常合在一起。Fine action 可分别标这些可观察的操作阶段。具体边界仍需通过试标统一。</li>
+        <li>目标改变、失败重试或独立等待应结合视频判断。不要仅因短暂停顿、光照变亮或视角改变就切段，也不要为贴合总指令而删掉实际发生的操作。</li>
+        <li>caption 只写画面能确认的动作、对象及必要方向，不把“准备抓取”写成“已拿起”。遮挡或身份不明时写清可见事实和不确定处，避免猜测。</li>
+        <li>每段只有一个自由文本，不要求中英双语。状态曲线可辅助定位，但夹爪闭合或轨迹变化本身不能证明抓取成功。当前不要求填写 reward 或动作成败评分。</li>
+      </ul>
+    </section>
+    <section><h3>4. 播放与编辑操作</h3>
+      <table><thead><tr><th>操作</th><th>用法</th></tr></thead><tbody>
+        <tr><td>播放／暂停</td><td>点击任意相机画面、播放按钮，或按空格；多视角同步。</td></tr>
+        <tr><td>新增边界</td><td>播放或暂停时点击“标注”，或按 M，在当前帧打点；相邻点自动成段。</td></tr>
+        <tr><td>调整边界</td><td>拖动底部时间轴的共享分界线，两侧区间一起更新；不能越过相邻边界。</td></tr>
+        <tr><td>合并片段</td><td>点击“与上一段合并”；合并后检查并整理 caption。</td></tr>
+        <tr><td>精确定位</td><td>输入帧步长，短按或长按 −／＋；左右方向键也按该步长移动。分界线获得焦点时，方向键每次微调 1 帧。</td></tr>
+        <tr><td>片段播放</td><td>使用“上一段／下一段”或点击分段框跳转；勾选“区间循环”重复查看当前选择的片段。</td></tr>
+        <tr><td>撤销／重做</td><td>使用顶部按钮，或 Ctrl／⌘ + Z、Ctrl／⌘ + Shift + Z；文字输入框内保留浏览器自己的编辑快捷键。</td></tr>
+      </tbody></table>
+      <p class="help-note">输入文字时不会触发播放、打点等页面快捷键。打开本说明会暂停视频，关闭后可手动继续播放。</p>
+    </section>
+    <section><h3>5. 提交、覆盖与加载规则</h3>
+      <ul>
+        <li>提交前确认：episode 与类型正确，署名正确，整条视频已核对，所有 caption 和所需类别均已填写。</li>
+        <li>同一数据集内，按 <strong>episode ＋ 标注人 ＋ 标注类型</strong> 区分提交。不同人、不同类型分别保存；从他人结果续标后用自己的姓名提交，不覆盖对方记录。</li>
+        <li>已有同名同类型记录时会询问覆盖：“是”替换原提交；“否”保留原提交与当前草稿；“取消”返回编辑。若确认期间记录再次变化，会重新询问。</li>
+        <li>只有页面提示“已提交”才表示提交完成。提交失败时保留当前编辑，可重试或先“导出 JSON”备份。人工结果单独保存，不改写模型原始预标注。</li>
+      </ul>
+    </section>
+    <section><h3>6. 人工标注数与多人同步</h3>
+      <ul>
+        <li>来源下拉框旁显示当前类型的人工提交人数：预标注和未提交草稿算 0，同人覆盖仍算 1，另一人独立提交后增加 1。</li>
+        <li>页面可见时每 3 秒同步；回到页面、切换类型及提交后也更新。同步只更新数字和来源选项，不自动加载或覆盖正在编辑的内容。同步失败时显示上次数量并标记失败。</li>
+        <li>“下一条”每次都查询服务器，不依赖页面可能稍旧的数字。其他人提交成功后，再点击会跳过该条。</li>
+        <li>编辑不占用 episode。两人若在提交前已打开同一条，仍可各自提交；本工具不会强制阻止独立复标。</li>
+      </ul>
+    </section>
+    <section><h3>7. 草稿与恢复</h3>
+      <ul>
+        <li>草稿保存在当前浏览器，按数据集、episode、标注类型区分；刷新或切换回来可恢复。切换前若草稿保存失败，会停留提示。</li>
+        <li>草稿不按姓名区分，也不自动同步到其他浏览器或电脑。共用同一浏览器换人前，请先提交或导出；更改姓名不会创建一份新的个人草稿。</li>
+        <li>提交记录可从来源列表手动加载。本地草稿可能因清理浏览器数据或使用无痕模式而丢失，较长工作建议及时提交或导出备份。</li>
+      </ul>
+    </section>
+  </div>
+</dialog>
 <dialog id="overwrite-dialog" aria-labelledby="overwrite-title">
   <form method="dialog">
     <h2 id="overwrite-title">覆盖已有标注？</h2>
@@ -50,5 +116,5 @@
   </form>
 </dialog>
 <datalist id="categories"></datalist>
-<script type="module" src="/editor-static/app.mjs?v=12"></script>
+<script type="module" src="/editor-static/app.mjs?v=13"></script>
 </body></html>

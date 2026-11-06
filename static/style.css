@@ -86,3 +86,34 @@
 }
 .frame-stepper input { width: 62px; text-align: center; }
 .frame-stepper span { color: var(--muted); font-size: 12px; }
+
+
+#help-dialog {
+  width: min(860px, calc(100vw - 24px));
+  max-height: 88vh;
+  max-height: 88dvh;
+  padding: 0;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+#help-dialog[open] { display: flex; flex-direction: column; }
+#help-dialog::backdrop { background: #030609c9; }
+.help-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.help-header h2 { margin: 0; font-size: 19px; }
+.help-body { overflow-y: auto; min-height: 0; padding: 4px 22px 22px; overscroll-behavior: contain; line-height: 1.75; }
+.help-body section + section { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 4px; }
+.help-body h3 { margin: 17px 0 8px; font-size: 16px; color: #75d6fb; }
+.help-body ul, .help-body ol { padding-left: 22px; margin: 8px 0; }
+.help-body li { margin: 7px 0; }
+.help-intro { color: var(--muted); }
+.help-body table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.help-body th, .help-body td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.help-body th:first-child, .help-body td:first-child { width: 105px; }
+.help-note { font-size: 12px; color: var(--muted); }
+@media (max-width: 600px) {
+  header { flex-wrap: wrap; gap: 10px; }
+  .header-actions { flex-wrap: wrap; }
+  .help-body { padding: 4px 14px 16px; }
+}

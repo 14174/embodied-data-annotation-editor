@@ -15,6 +15,8 @@ Annotate multi-view robot videos in your browser. Split a recorded episode into 
 
 The source selector shows the submitted human annotation count for the current type. It refreshes every 3 seconds while the page is visible, on return to the page, on type changes, and after submission. Refreshing only updates the count and available sources; it preserves your current edits and source selection. Next episode checks the server on every click. Episodes are not reserved: two people who opened the same episode before either submitted can still submit independently.
 
+Click **使用说明** (Help) in the header for naming, submission and overwrite rules, annotation guidance, shortcuts, multi-user synchronization, and draft recovery. Opening the guide pauses playback without changing your annotations.
+
 ## Run locally
 
 Python 3.10 or later is required.
