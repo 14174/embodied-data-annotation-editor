@@ -13,6 +13,8 @@ Annotate multi-view robot videos in your browser. Split a recorded episode into 
 3. **Refine segments and captions.** Drag a shared boundary on the timeline to update both adjacent segments. Edit captions and fine-action categories in the right panel, or merge a segment with the previous one.
 4. **Save your work.** The browser saves drafts automatically. Enter an annotator name to submit, or export the annotation as JSON. Submissions are keyed by episode, annotator, and annotation type. Replacing an existing submission requires confirmation.
 
+5. **Flag an anomaly for human review.** Click **人工复审**, enter your name and a required note, and submit. Reports mark the whole episode as needing review across both annotation types. Each report is preserved separately; source instructions, current segment edits, and human annotation counts are unchanged. Flagged episodes are not automatically excluded from Next episode. Resolving reports is not implemented yet.
+
 The source selector shows the submitted human annotation count for the current type. It refreshes every 3 seconds while the page is visible, on return to the page, on type changes, and after submission. Refreshing only updates the count and available sources; it preserves your current edits and source selection. Next episode checks the server on every click. Episodes are not reserved: two people who opened the same episode before either submitted can still submit independently.
 
 Click **使用说明** (Help) in the header for naming, submission and overwrite rules, annotation guidance, shortcuts, multi-user synchronization, and draft recovery. Opening the guide pauses playback without changing your annotations.
@@ -120,10 +122,13 @@ Intervals are half-open: `[start_frame, end_frame)`. The first segment covers fr
 
 Human submissions are written to the output directory passed at startup, for example `annotations/episode_000000/subtask/<annotator-name-hash>.json`. Fine-action submissions go in the sibling `fine_action/` directory.
 
+Anomaly reports are separate sidecars at `annotations/episode_000000/review_flags/<report-id>.json`, with `status`, `annotator`, `annotation_type`, `note`, `created_at`, and a server-read snapshot of the original instruction.
+
 ## Tests
 
 ```sh
 python -m unittest discover -s tests
 node tests/segments.test.mjs
 node tests/annotations.test.mjs
+node tests/review.test.mjs
 ```

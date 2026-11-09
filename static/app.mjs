@@ -22,6 +22,7 @@ let segments = [], past = [], future = [], submitted = [];
 let author = '', kind = 'subtask', source = null, videos = [], active = -1, zoom = 1, drag = null;
 let loading = false, saving = false;
 let humanAnnotationCount = 0, annotationRead = 0;
+let reviewFlags = [], reviewRead = 0, reviewSaving = false;
 const master = () => videos[0];
 const duration = () => info.frame_count / info.fps;
 const frame = () => Math.min(info.frame_count - 1, Math.floor((master()?.currentTime || 0) * info.fps + 0.0001));
@@ -445,10 +446,98 @@ async function refreshAnnotations() {
     return false;
   }
 }
+function reviewMessage(message, success = false) {
+  $('review-feedback').textContent = message;
+  $('review-feedback').className = success ? 'review-feedback success' : 'review-feedback';
+}
+function renderReviewFlags() {
+  $('review-status').hidden = !reviewFlags.length;
+  $('review-status-button').textContent = '异常 · 待人工复审（' + reviewFlags.length + ' 条备注） · 点击查看';
+  const list = $('review-flags');
+  list.replaceChildren();
+  if (!reviewFlags.length) { list.textContent = '尚无异常备注。'; return; }
+  for (const flag of reviewFlags) {
+    const row = document.createElement('article');
+    row.className = 'review-flag';
+    const meta = document.createElement('div');
+    meta.className = 'review-flag-meta';
+    meta.textContent = flag.annotator + ' · ' + (flag.annotation_type === 'fine_action' ? '细粒度动作' : 'Subtask') +
+      ' · ' + new Date(flag.created_at * 1000).toLocaleString();
+    const note = document.createElement('p');
+    note.textContent = flag.note;
+    row.append(meta, note);
+    list.append(row);
+  }
+}
+async function refreshReviewFlags() {
+  const request = ++reviewRead;
+  try {
+    const data = await api('review-flags');
+    if (request !== reviewRead) return false;
+    if (!Array.isArray(data.flags)) throw Error('复审记录格式无效');
+    reviewFlags = data.flags;
+    renderReviewFlags();
+    return true;
+  } catch {
+    if (request === reviewRead) {
+      $('review-status').hidden = false;
+      $('review-status-button').textContent = reviewFlags.length
+        ? '异常 · 待人工复审（' + reviewFlags.length + ' 条备注，更新失败） · 点击重试'
+        : '人工复审状态同步失败 · 点击重试';
+    }
+    return false;
+  }
+}
+function openReview() {
+  const dialog = $('review-dialog');
+  if (dialog.open) return;
+  $('review-author').value = $('author').value.trim();
+  $('review-context').textContent = 'Episode ' + info.episode_index + ' · ' +
+    (kind === 'fine_action' ? '细粒度动作' : 'Subtask');
+  reviewMessage('');
+  videos.forEach(video => video.pause());
+  dialog.showModal();
+  refreshReviewFlags();
+}
+async function submitReview() {
+  if (reviewSaving) return;
+  const reviewer = $('review-author').value.trim();
+  const note = $('review-note').value.trim();
+  if (!reviewer || reviewer.length > 80) {
+    reviewMessage('请填写标注人署名（最多 80 字）。'); $('review-author').focus(); return;
+  }
+  if (!note || note.length > 2000) {
+    reviewMessage('请填写异常备注（最多 2000 字）。'); $('review-note').focus(); return;
+  }
+  reviewSaving = true;
+  $('submit-review').disabled = true;
+  $('close-review').disabled = true;
+  reviewMessage('正在提交…', true);
+  try {
+    const flag = await api('review-flags', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({episode_index:info.episode_index, annotator:reviewer, annotation_type:kind, note})});
+    ++reviewRead;
+    reviewFlags = [flag, ...reviewFlags.filter(item => item.report_id !== flag.report_id)];
+    renderReviewFlags();
+    author = reviewer;
+    $('author').value = reviewer;
+    try { localStorage.setItem('annotation-editor-author', reviewer); } catch {}
+    $('review-note').value = '';
+    reviewMessage('已标记异常，等待人工复审。', true);
+    await refreshReviewFlags();
+  } catch (error) {
+    reviewMessage('提交失败，备注已保留：' + error.message);
+  } finally {
+    reviewSaving = false;
+    $('submit-review').disabled = false;
+    $('close-review').disabled = false;
+  }
+}
 function startAnnotationSync() {
-  setInterval(() => { if (!document.hidden) return refreshAnnotations(); }, 3000);
-  window.addEventListener('focus', () => refreshAnnotations());
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAnnotations(); });
+  const refresh = () => Promise.all([refreshAnnotations(), refreshReviewFlags()]);
+  setInterval(() => { if (!document.hidden) return refresh(); }, 3000);
+  window.addEventListener('focus', refresh);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 }
 function updateAuthor() {
   author = $('author').value.trim();
@@ -629,6 +718,11 @@ function showHelp() {
   dialog.showModal();
 }
 function wire() {
+  $('open-review').onclick = openReview;
+  $('review-status-button').onclick = openReview;
+  $('close-review').onclick = () => { if (!reviewSaving) $('review-dialog').close(); };
+  $('submit-review').onclick = submitReview;
+  $('review-dialog').addEventListener('cancel', event => { if (reviewSaving) event.preventDefault(); });
   $('open-help').onclick = showHelp;
   $('close-help').onclick = () => $('help-dialog').close();
   $('play').onclick = togglePlay;
@@ -684,7 +778,7 @@ function wire() {
     setTimeout(() => URL.revokeObjectURL(url),1000);
   };
   document.addEventListener('keydown', event => {
-    if ($('help-dialog').open || $('overwrite-dialog').open) return;
+    if ($('help-dialog').open || $('overwrite-dialog').open || $('review-dialog').open) return;
     if (event.target.matches('textarea,input,select,[contenteditable]')) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
@@ -721,6 +815,7 @@ async function init() {
   wire();
   updateAuthor();
   context();
+  refreshReviewFlags();
   startAnnotationSync();
   requestAnimationFrame(tick);
   try {

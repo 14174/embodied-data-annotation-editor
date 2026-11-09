@@ -99,6 +99,26 @@ def create_app(root, output):
         except ValueError as error:
             raise HTTPException(422, str(error))
 
+    @app.get('/editor-api/review-flags')
+    def review_flags(response: Response, episode: int = 0):
+        response.headers['Cache-Control'] = 'no-store'
+        flags = store(episode).flags()
+        return {'status': 'needs_review' if flags else 'unflagged', 'flags': flags}
+
+    @app.post('/editor-api/review-flags')
+    def flag_episode(payload: dict, episode: int = 0):
+        destination = store(episode)
+        if payload.get('episode_index') != episode:
+            raise HTTPException(422, '异常备注的 episode 与当前页面不一致')
+        try:
+            return destination.flag(
+                payload.get('annotator'), payload.get('annotation_type'), payload.get('note'),
+                {'dataset_name': dataset.root.name, 'episode_index': episode, 'fps': dataset.fps,
+                 'original_instruction': dataset.info(episode)['instruction']},
+            )
+        except (ValueError, TypeError) as error:
+            raise HTTPException(422, str(error))
+
     @app.post('/editor-api/annotation')
     def submit(payload: dict, episode: int = 0):
         destination = store(episode)

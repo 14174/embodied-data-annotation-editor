@@ -117,3 +117,20 @@
   .header-actions { flex-wrap: wrap; }
   .help-body { padding: 4px 14px 16px; }
 }
+
+
+#review-dialog { width: min(720px, calc(100vw - 24px)); max-height: 88vh; max-height: 88dvh; padding: 0; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+#review-dialog[open] { display: flex; flex-direction: column; }
+#review-dialog::backdrop { background: #030609c9; }
+#review-status { margin: 10px 14px 0; }
+#review-status-button { color: #ffd48b; border-color: #8c7346; background: #302818; text-align: left; }
+.review-field { display: grid; gap: 5px; margin: 12px 0; }
+.review-field input, .review-field textarea { width: 100%; }
+.review-field textarea { color: var(--text); background: #172337; border: 1px solid var(--border); border-radius: 7px; padding: 10px; resize: vertical; line-height: 1.65; }
+.review-feedback { min-height: 26px; margin: 8px 0; color: #ffbd9c; }
+.review-feedback.success { color: #8cdec5; }
+.review-flag { padding: 10px 0; border-top: 1px solid var(--border); }
+.review-flag-meta { color: var(--muted); font-size: 12px; }
+.review-flag p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0; }
+
+.header-actions { flex-wrap: wrap; justify-content: flex-end; }

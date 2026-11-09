@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from threading import Lock
 
@@ -91,4 +92,20 @@ class AnnotationStore:
         return json.loads(path.read_text()) if path.exists() else None
 
     def list(self):
-        return [json.loads(p.read_text()) for p in sorted(self.root.glob('*/*.json'))]
+        return [json.loads(p.read_text()) for kind in sorted(TYPES)
+                for p in sorted((self.root / kind).glob('*.json'))]
+
+    def flag(self, author, kind, note, metadata=None):
+        self._path(author, kind)  # Apply the same signature and type validation.
+        if not isinstance(note, str) or not note.strip() or len(note.strip()) > 2000:
+            raise ValueError('请填写异常备注（最多 2000 字）')
+        data = dict(metadata or {})
+        data.update(report_id=uuid.uuid4().hex, status='needs_review', annotator=author.strip(),
+                    annotation_type=kind, note=note.strip(), frame_count=self.frame_count,
+                    created_at=time.time())
+        self._write(self.root / 'review_flags' / (data['report_id'] + '.json'), data)
+        return data
+
+    def flags(self):
+        records = [json.loads(p.read_text()) for p in (self.root / 'review_flags').glob('*.json')]
+        return sorted(records, key=lambda record: record['created_at'], reverse=True)
