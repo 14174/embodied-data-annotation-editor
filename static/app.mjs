@@ -48,7 +48,7 @@ function persist() {
   }
 }
 
-function switchEpisode(value) {
+function switchEpisode(value, targetKind = kind) {
   if (saving || loading) return;
   if (!persist()) {
     $('dataset').value = String(info.episode_index);
@@ -57,8 +57,37 @@ function switchEpisode(value) {
   }
   const url = new URL(location.href);
   url.searchParams.set('episode', value);
-  url.searchParams.set('kind', kind);
+  url.searchParams.set('kind', targetKind);
   location.href = url.href;
+}
+
+async function previousSubmission() {
+  if (saving || loading || drag || !info.episodes) return;
+  const authorInput = $('author');
+  const requestedAuthor = authorInput.value.trim();
+  if (!requestedAuthor) {
+    warn('请先填写标注人姓名，以查找上次提交。');
+    authorInput.focus();
+    return;
+  }
+  const button = $('previous-submission');
+  button.disabled = true;
+  warn();
+  try {
+    const previous = await api('last-submission?' + new URLSearchParams({author: requestedAuthor}));
+    if (authorInput.value.trim() !== requestedAuthor) return;
+    if (!previous) {
+      warn('这个署名在当前数据集里还没有提交记录。');
+    } else if (previous.episode_index === info.episode_index && previous.annotation_type === kind) {
+      warn('当前就是这个署名最近一次提交的 episode。');
+    } else {
+      switchEpisode(previous.episode_index, previous.annotation_type);
+    }
+  } catch (error) {
+    warn('读取上次提交失败：' + error.message);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function nextEpisode() {
@@ -765,6 +794,8 @@ function wire() {
     $(id).onclick = nextEpisode;
     $(id).disabled = !info.episodes || info.episodes.length < 2;
   }
+  $('previous-submission').onclick = previousSubmission;
+  $('previous-submission').disabled = !info.episodes;
   $('submit').onclick = submit;
   $('import').onclick = importSource;
   $('blank').onclick = () => change(blank(),null);

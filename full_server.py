@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from storage import AnnotationConflict, AnnotationStore, next_episode
+from storage import TYPES, AnnotationConflict, AnnotationStore, next_episode
 from v3_dataset import ReviewDataset
 
 
@@ -98,6 +98,22 @@ def create_app(root, output):
             return store(episode).get(author, kind)
         except ValueError as error:
             raise HTTPException(422, str(error))
+
+    @app.get('/editor-api/last-submission')
+    def last_submission(author: str, response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        latest = None
+        try:
+            for index in dataset.rows:
+                episode_store = store(index)
+                for kind in sorted(TYPES):
+                    record = episode_store.get(author, kind)
+                    if record and (latest is None or record['created_at'] > latest['created_at']):
+                        latest = {'episode_index': index, 'annotation_type': kind,
+                                  'created_at': record['created_at']}
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        return latest
 
     @app.get('/editor-api/review-flags')
     def review_flags(response: Response, episode: int = 0):
