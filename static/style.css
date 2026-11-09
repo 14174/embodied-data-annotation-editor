@@ -119,6 +119,14 @@
 }
 
 
+#open-review {
+  background: #b91c1c;
+  border-color: #f87171;
+  color: #fff;
+  font-weight: 650;
+}
+#open-review:hover { background: #991b1b; }
+
 #review-dialog { width: min(720px, calc(100vw - 24px)); max-height: 88vh; max-height: 88dvh; padding: 0; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
 #review-dialog[open] { display: flex; flex-direction: column; }
 #review-dialog::backdrop { background: #030609c9; }
