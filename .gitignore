@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 annotations/
 data/
+
+.env
+.env.*
+!.env.example

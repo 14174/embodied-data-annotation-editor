@@ -23,6 +23,7 @@ let author = '', kind = 'subtask', source = null, videos = [], active = -1, zoom
 let loading = false, saving = false;
 let humanAnnotationCount = 0, annotationRead = 0;
 let reviewFlags = [], reviewRead = 0, reviewSaving = false;
+let assistTarget = null, assistRequest = 0;
 const master = () => videos[0];
 const duration = () => info.frame_count / info.fps;
 const frame = () => Math.min(info.frame_count - 1, Math.floor((master()?.currentTime || 0) * info.fps + 0.0001));
@@ -365,6 +366,23 @@ function renderCards() {
     const timestamp = document.createElement('button');
     timestamp.className = 'time-btn';
     head.append(number,timestamp);
+    if (kind === 'subtask') {
+      for (const [mode, label, title] of [
+        ['simplify','精简整理','把当前 caption 整理为简洁的 subtask，预览后采用'],
+        ['diversify','多样化改写','调整句式与同义词，保留任务事实，预览后采用'],
+      ]) {
+        const button = document.createElement('button');
+        button.className = 'caption-assist-button';
+        button.textContent = label;
+        button.title = title;
+        button.onclick = event => {
+          event.stopPropagation();
+          openCaptionAssist(i,mode);
+          generateCaptionAssist();
+        };
+        head.append(button);
+      }
+    }
     if (i) {
       const merge = document.createElement('button');
       merge.textContent = '与上一段合并';
@@ -708,6 +726,73 @@ function renderSignals() {
     plot.hidden = !toggle.checked;
   });
 }
+function openCaptionAssist(index, mode = 'simplify') {
+  if (loading || saving || drag || kind !== 'subtask' || !segments[index]) return;
+  const segment = segments[index];
+  assistTarget = {index, episode:info.episode_index, kind, mode, segment:{...segment}};
+  ++assistRequest;
+  $('caption-assist-title').textContent = (mode === 'diversify' ? '多样化改写' : '精简整理') + ' · Subtask';
+  $('caption-assist-description').textContent = mode === 'diversify'
+    ? '仅发送当前 caption 文本，调整句式和可靠的同义词，保留动作、对象、颜色、左右手与成败信息。请对照视频复核，AI 改写可能改变原意。'
+    : '仅将当前 caption 文本发给配置的文本模型。同一目标的动作阶段可归纳为完整操作；跨对象／目标内容保留并提示。请对照视频复核，AI 建议可能遗漏或改错事实。';
+  $('caption-assist-generate').textContent = mode === 'diversify' ? '换一种表达' : '重新生成';
+  $('caption-assist-original').textContent = segment.caption;
+  $('caption-assist-result').value = '';
+  $('caption-assist-warnings').textContent = '';
+  $('caption-assist-feedback').textContent = '';
+  $('caption-assist-apply').disabled = true;
+  $('caption-assist-generate').disabled = false;
+  videos.forEach(video => video.pause());
+  $('caption-assist-dialog').showModal();
+}
+function closeCaptionAssist() {
+  ++assistRequest;
+  assistTarget = null;
+  $('caption-assist-dialog').close();
+}
+async function generateCaptionAssist() {
+  if (!assistTarget || $('caption-assist-generate').disabled) return;
+  const request = ++assistRequest;
+  const target = assistTarget;
+  $('caption-assist-generate').disabled = true;
+  $('caption-assist-apply').disabled = true;
+  $('caption-assist-warnings').textContent = '';
+  $('caption-assist-feedback').textContent = (target.mode === 'diversify' ? '正在改写' : '正在整理') + '…原文与时间边界保持不变。';
+  try {
+    const result = await api('caption-assist', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({annotation_type:target.kind,caption:target.segment.caption,mode:target.mode})});
+    if (request !== assistRequest || assistTarget !== target) return;
+    if (typeof result.caption !== 'string' || !result.caption.trim() || !Array.isArray(result.warnings)) {
+      throw Error('返回的整理建议无效');
+    }
+    $('caption-assist-result').value = result.caption;
+    $('caption-assist-warnings').textContent = result.warnings.join('\n');
+    $('caption-assist-feedback').textContent = '请核对对象、成败与任务范围；可以修改建议后再采用。';
+    $('caption-assist-apply').disabled = false;
+  } catch (error) {
+    if (request === assistRequest) $('caption-assist-feedback').textContent = '生成失败：' + error.message;
+  } finally {
+    if (request === assistRequest) $('caption-assist-generate').disabled = false;
+  }
+}
+function applyCaptionAssist() {
+  const target = assistTarget;
+  if (!target || $('caption-assist-apply').disabled) return;
+  const current = segments[target.index], expected = target.segment;
+  if (target.episode !== info.episode_index || target.kind !== kind || !current ||
+      current.start_frame !== expected.start_frame || current.end_frame !== expected.end_frame ||
+      current.caption !== expected.caption) {
+    $('caption-assist-feedback').textContent = '原分段已变化，请关闭并重新整理。';
+    $('caption-assist-apply').disabled = true;
+    return;
+  }
+  const text = $('caption-assist-result').value.trim();
+  if (!text) { $('caption-assist-feedback').textContent = '建议不能为空。'; return; }
+  if (text !== current.caption) {
+    change(segments.map((segment,index) => index === target.index ? {...segment,caption:text} : segment));
+  }
+  closeCaptionAssist();
+}
 let lastSignalFrame = -1;
 function drawSignals(at) {
   if (!signals || !$('signal-plots').closest('details').open) return;
@@ -747,6 +832,10 @@ function showHelp() {
   dialog.showModal();
 }
 function wire() {
+  $('caption-assist-generate').onclick = generateCaptionAssist;
+  $('caption-assist-apply').onclick = applyCaptionAssist;
+  $('caption-assist-close').onclick = closeCaptionAssist;
+  $('caption-assist-dialog').addEventListener('cancel', event => { event.preventDefault(); closeCaptionAssist(); });
   $('open-review').onclick = openReview;
   $('review-status-button').onclick = openReview;
   $('close-review').onclick = () => { if (!reviewSaving) $('review-dialog').close(); };
@@ -809,7 +898,7 @@ function wire() {
     setTimeout(() => URL.revokeObjectURL(url),1000);
   };
   document.addEventListener('keydown', event => {
-    if ($('help-dialog').open || $('overwrite-dialog').open || $('review-dialog').open) return;
+    if ($('help-dialog').open || $('overwrite-dialog').open || $('review-dialog').open || $('caption-assist-dialog').open) return;
     if (event.target.matches('textarea,input,select,[contenteditable]')) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();

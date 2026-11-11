@@ -142,3 +142,15 @@
 .review-flag p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0; }
 
 .header-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+#caption-assist-dialog { width: min(800px, calc(100vw - 24px)); max-height: 88dvh; padding: 0; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+#caption-assist-dialog[open] { display: flex; flex-direction: column; }
+#caption-assist-dialog::backdrop { background: #030609c9; }
+#caption-assist-original { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; }
+#caption-assist-warnings { color: #ffd48b; white-space: pre-wrap; overflow-wrap: anywhere; }
+#caption-assist-feedback { font-size: 13px; color: var(--muted); }
+.card-head { flex-wrap: wrap; gap: 6px; }
+.card-head .caption-assist-button { margin-left: auto; color: #75d6fb; }
+.card-head .caption-assist-button + button { margin-left: 0; }
+.caption-assist-footer { flex-shrink: 0; padding: 12px 22px 8px; border-top: 1px solid var(--border); }
+.caption-assist-footer .help-note { margin-bottom: 0; }

@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from storage import TYPES, AnnotationConflict, AnnotationStore, next_episode
 from v3_dataset import ReviewDataset
+from caption_assist import simplify, AssistUnavailable
 
 
 def create_app(root, output):
@@ -41,6 +42,19 @@ def create_app(root, output):
     def info(episode: int = 0):
         get_episode(episode)
         return dataset.info(episode)
+
+    @app.post('/editor-api/caption-assist')
+    def caption_assist(payload: dict, response: Response, episode: int = 0):
+        response.headers['Cache-Control'] = 'no-store'
+        get_episode(episode)
+        if payload.get('annotation_type') != 'subtask':
+            raise HTTPException(422, '当前文字辅助仅用于 Subtask 标注。')
+        try:
+            return simplify(payload.get('caption'), mode=payload.get('mode', 'simplify'))
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        except AssistUnavailable as error:
+            raise HTTPException(503, str(error))
 
     @app.get('/editor-api/next-episode')
     def next_unannotated(response: Response, episode: int = 0, kind: str = 'subtask'):

@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+Release notes: [v0.2.0 and version history](CHANGELOG.md).
+
 Annotate multi-view robot videos in your browser. Split a recorded episode into action segments and write a caption for each one. Start from scratch or revise FLORA predictions or a saved human annotation.
 
 ![Annotation editor with three synchronized camera views, editable segment captions, and a timeline with draggable boundaries.](docs/images/editor-screenshot.png)
@@ -11,13 +13,27 @@ Annotate multi-view robot videos in your browser. Split a recorded episode into 
 1. **Choose an episode and annotation type.** Select Subtask or Fine action. Click **Next episode** to prefer an episode with no submitted human annotation of that type, searching forward and wrapping around; if the other episodes are all annotated, it stays on the current page and prompts you to choose manually for repeat annotation. Model labels and browser drafts do not count as submissions. Your draft and annotation type are retained when switching. To start from an existing result, choose it in the dropdown on the right and click Load.
 2. **Play the video and mark boundaries.** Click a camera view or press Space to play or pause. Click the annotation button or press `M` to split at the current frame. Jump between segments, or set a frame step and tap or hold `−` / `+` to move by that step. Expand the state plots to compare signals with the video.
 3. **Refine segments and captions.** Drag a shared boundary on the timeline to update both adjacent segments. Edit captions and fine-action categories in the right panel, or merge a segment with the previous one.
-4. **Save your work.** The browser saves drafts automatically. Enter an annotator name to submit, or export the annotation as JSON. Submissions are keyed by episode, annotator, and annotation type. Replacing an existing submission requires confirmation.
-
+4. **Save your work.** The browser saves drafts automatically. Enter an annotator name to submit, or export the annotation as JSON. Submissions are keyed by episode, annotator, and annotation type. Replacing an existing submission requires confirmation. **上一条** returns to the current annotator's most recent submission, including its annotation type; it does not mean the previous episode number.
 5. **Flag an anomaly for human review.** Click **人工复审**, enter your name and a required note, and submit. Reports mark the whole episode as needing review across both annotation types. Each report is preserved separately; source instructions, current segment edits, and human annotation counts are unchanged. Flagged episodes are not automatically excluded from Next episode. Resolving reports is not implemented yet.
 
 The source selector shows the submitted human annotation count for the current type. It refreshes every 3 seconds while the page is visible, on return to the page, on type changes, and after submission. Refreshing only updates the count and available sources; it preserves your current edits and source selection. Next episode checks the server on every click. Episodes are not reserved: two people who opened the same episode before either submitted can still submit independently.
 
 Click **使用说明** (Help) in the header for naming, submission and overwrite rules, annotation guidance, shortcuts, multi-user synchronization, and draft recovery. Opening the guide pauses playback without changing your annotations.
+
+## Caption assistance (optional)
+
+Subtask cards provide two independent actions when a model service is configured:
+
+| Button | Purpose |
+| --- | --- |
+| **精简整理** · Simplify | Deduplicate merged descriptions and turn phases serving the same object and goal into a concise imperative subtask. |
+| **多样化改写** · Rewrite | Vary sentence structure and equivalent wording while retaining task facts, for example `stuffed toy` → `plush toy` or `T-shirt` → `tee`. |
+
+First check the segment range against the video. Click an action to open the original caption and a generated suggestion. Edit the suggestion if needed, regenerate with **重新生成 / 换一种表达**, and click **采用建议** (Apply) to replace that caption. Apply updates the browser draft and supports Undo; submit separately when you finish reviewing. Closing the dialog or a failed request leaves the original caption intact. Neither action changes boundaries or submits annotations. Fine action cards do not use these helpers.
+
+Keep the same object, color, hand, spatial relations and success/failure status. A basket, tray and bin are different categories, not interchangeable synonyms. If a merged caption reaches a different object or goal, check the interval rather than deleting that operation to force one subtask. Suggestions can contain factual mistakes; the model only sees text and cannot verify the video.
+
+Only the current caption text is sent to the configured model, together with built-in prompt examples. Videos, original task instructions, state values and annotator names are not sent. Model calls start only when a helper is clicked. Manual annotation works without model configuration.
 
 ## Run locally
 
@@ -31,6 +47,31 @@ python full_server.py /path/to/dataset ./annotations
 ```
 
 Open [http://127.0.0.1:8000/editor](http://127.0.0.1:8000/editor). Choose an output directory outside the dataset directory. The server listens on localhost by default. Annotator names identify submissions; the editor does not authenticate users.
+
+For an existing trusted intranet deployment, use `--host 0.0.0.0 --port 8000` and manage access at the network or reverse proxy layer.
+
+### Configure the text model
+
+Copy [.env.example](.env.example) to an untracked `.env`, fill in your own key, then load it before starting the server:
+
+```sh
+cp .env.example .env
+# Edit .env and set ANNOTATION_LLM_API_KEY.
+set -a
+. ./.env
+set +a
+python full_server.py /path/to/dataset ./annotations
+```
+
+The server reads process environment variables; it does not load `.env` automatically.
+
+| Variable | Meaning / default |
+| --- | --- |
+| `ANNOTATION_LLM_API_KEY` | Server-side model key. Falls back to `DASHSCOPE_API_KEY`. |
+| `ANNOTATION_LLM_BASE_URL` | Chat API base URL, ending in `/v1`. Falls back to `DASHSCOPE_BASE_URL`, then `https://dashscope.aliyuncs.com/compatible-mode/v1`. |
+| `ANNOTATION_LLM_MODEL` | Model name; default `qwen3.8-max`. |
+
+The current payload uses `/chat/completions`, `response_format: json_object` and Qwen's `enable_thinking: false`. Another provider must support these fields or adapt the payload in [caption_assist.py](caption_assist.py). Keys remain on the server. Missing configuration, busy responses, timeouts and malformed model output are shown in the dialog without replacing the caption. There are at most two concurrent model calls per server process, with a 60-second request timeout.
 
 ## Dataset format
 
@@ -131,4 +172,5 @@ python -m unittest discover -s tests
 node tests/segments.test.mjs
 node tests/annotations.test.mjs
 node tests/review.test.mjs
+node tests/caption_assist.test.mjs
 ```
