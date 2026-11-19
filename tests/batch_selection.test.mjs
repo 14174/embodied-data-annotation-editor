@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {mergeSelected} from '../static/segments.mjs';
 const source=fs.readFileSync(new URL('../static/app.mjs',import.meta.url),'utf8')
-  .replace(/^import[^\n]+\n/,'').replace(/init\(\)\.catch[^\n]*;\s*$/,'');
+  .replace(/^import[^\n]+\n/gm,'').replace(/init\(\)\.catch[^\n]*;\s*$/,'');
 function element() {
   const classes=new Set();
   return {children:[],dataset:{},style:{setProperty(){}},value:'',disabled:false,checked:false,

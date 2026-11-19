@@ -1,6 +1,13 @@
 # Version history / 版本记录
 
-## 2026-11-19 · Current deployed version / 当前部署版本
+## 2026-11-19 · Caption vocabulary / Caption 闭集
+
+- Add eight washing/drying caption choices to Subtask cards while retaining free text and Undo/Redo.
+- Import/restore vocabulary JSON with per-dataset browser persistence, validation and non-destructive switching.
+- Preserve the existing annotation JSON format. Fine action remains independent.
+- 验证：24 项 Python 测试、9 组 JavaScript 测试通过；真实 Chrome 检查选择、自由编辑、撤销、导入、错误文件、草稿恢复、跨 episode、恢复默认和类型切换，导入后时间标签与高亮正常。
+
+## 2026-11-19 · Navigation and source workflows / 导航与来源加载
 
 - Four navigation buttons: sequential Previous/Next and annotation Previous/Next, which prioritize episodes without human submissions of the current type.
 - Persist the selected source across episodes, automatically load it, and keep the dropdown synchronized with fallback results.

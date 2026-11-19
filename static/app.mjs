@@ -1,4 +1,5 @@
 import { splitAt, moveBoundary, mergeAt, mergeSelected } from './segments.mjs?v=19';
+import {validateVocabulary} from './caption-vocabulary.mjs?v=1';
 
 const $ = id => document.getElementById(id);
 const colors = ['#5a95d4', '#5eaf94', '#9e89db', '#d18c77', '#baa265'];
@@ -19,6 +20,7 @@ const api = async (path, options) => {
 };
 let info, preset, signals;
 let modelPreset = null, modelSourceWarning = '';
+let captionVocabulary = null, vocabularyBusy = false;
 let selectedSource = 'blank';
 let segments = [], past = [], future = [], submitted = [];
 let author = '', kind = 'subtask', source = null, videos = [], active = -1, zoom = 1, drag = null;
@@ -76,6 +78,81 @@ function persist() {
     status('本地草稿保存失败');
     return false;
   }
+}
+
+const vocabularyKey = () => JSON.stringify(['annotation-editor-vocabulary', info.dataset_name, 'subtask']);
+async function defaultVocabulary() {
+  const response = await fetch('/editor-static/caption-vocabulary.json', {cache:'no-store'});
+  if (!response.ok) throw Error('默认词表读取失败');
+  return validateVocabulary(await response.json());
+}
+function updateVocabularyControls() {
+  $('vocabulary-bar').hidden = kind !== 'subtask';
+  $('vocabulary-name').textContent = captionVocabulary
+    ? captionVocabulary.name + ' · v' + captionVocabulary.version + ' · ' + captionVocabulary.items.length + ' 项'
+    : '词表暂不可用，可自由标注';
+  for (const id of ['vocabulary-import','vocabulary-reset','vocabulary-file']) {
+    $(id).disabled = vocabularyBusy || loading || saving || !!drag;
+  }
+}
+async function initializeVocabulary() {
+  let message = '';
+  try {
+    const stored = localStorage.getItem(vocabularyKey());
+    captionVocabulary = stored ? validateVocabulary(JSON.parse(stored)) : await defaultVocabulary();
+  } catch {
+    try {
+      captionVocabulary = await defaultVocabulary();
+      message = '已加载默认词表；浏览器保存的词表暂不可用。';
+    } catch {
+      captionVocabulary = null;
+      message = '词表读取失败，可继续自由标注，也可导入词表。';
+    }
+  }
+  $('vocabulary-feedback').textContent = message;
+  updateVocabularyControls();
+}
+function activateVocabulary(value, reset = false) {
+  const next = validateVocabulary(value);
+  if (reset) localStorage.removeItem(vocabularyKey());
+  else localStorage.setItem(vocabularyKey(), JSON.stringify(next));
+  captionVocabulary = next;
+  render();
+}
+async function importVocabularyFile(file) {
+  if (!file || vocabularyBusy || loading || saving || drag) return;
+  vocabularyBusy = true;
+  updateVocabularyControls();
+  try {
+    if (file.size > 1024 * 1024) throw Error('词表文件请控制在 1 MB 以内');
+    activateVocabulary(JSON.parse(await file.text()));
+    $('vocabulary-feedback').textContent = '词表已导入并保存在当前浏览器，已有 caption 保持原文。';
+  } catch (error) {
+    $('vocabulary-feedback').textContent = '导入失败：' + error.message;
+  } finally {
+    vocabularyBusy = false;
+    $('vocabulary-file').value = '';
+    updateVocabularyControls();
+  }
+}
+async function resetVocabulary() {
+  if (vocabularyBusy || loading || saving || drag) return;
+  vocabularyBusy = true;
+  updateVocabularyControls();
+  try {
+    activateVocabulary(await defaultVocabulary(), true);
+    $('vocabulary-feedback').textContent = '已恢复默认词表，已有 caption 保持原文。';
+  } catch (error) {
+    $('vocabulary-feedback').textContent = '恢复失败：' + error.message;
+  } finally {
+    vocabularyBusy = false;
+    updateVocabularyControls();
+  }
+}
+function syncCaptionChoice(choice, caption) {
+  choice.value = captionVocabulary.items.find(item => item.caption === caption)?.id || '';
+  choice.options[0].text = caption ? '自定义（也可选择标准 caption）' : '选择标准 caption，或在下方自由输入';
+  choice.title = caption || '选择后填入英文原文，不改变分段';
 }
 
 function switchEpisode(value, targetKind = kind) {
@@ -450,6 +527,7 @@ function renderCards() {
       head.append(merge);
     }
     card.append(head);
+    let captionSelect = null;
     const field = (el,key) => {
       el.value = segment[key] || '';
       el.onfocus = () => {
@@ -462,6 +540,7 @@ function renderCards() {
             el.edited = true;
           }
           segments[i] = {...segments[i],[key]:el.value};
+          if (key === 'caption' && captionSelect) syncCaptionChoice(captionSelect, el.value);
           persist();
           updatePlayback(frame(),true);
           updateButtons();
@@ -470,6 +549,23 @@ function renderCards() {
       el.onblur = () => { el.edited = false; if (key === 'category') updateCategories(); };
       return el;
     };
+    if (kind === 'subtask' && captionVocabulary) {
+      captionSelect = document.createElement('select');
+      captionSelect.className = 'caption-choice';
+      captionSelect.setAttribute('aria-label', '第 ' + (i+1) + ' 段标准 caption');
+      captionSelect.append(new Option('', ''), ...captionVocabulary.items.map((item,index) =>
+        new Option((index+1) + '. ' + (item.label_zh ? item.label_zh + ' · ' : '') + item.caption, item.id)));
+      syncCaptionChoice(captionSelect, segment.caption);
+      captionSelect.onclick = event => event.stopPropagation();
+      captionSelect.onchange = () => {
+        if (loading || saving || drag) return;
+        const item = captionVocabulary.items.find(item => item.id === captionSelect.value);
+        if (item && item.caption !== segments[i].caption) {
+          change(segments.map((row,index) => index === i ? {...row, caption:item.caption} : row));
+        } else syncCaptionChoice(captionSelect, segments[i].caption);
+      };
+      card.append(captionSelect);
+    }
     const caption = document.createElement('textarea');
     caption.placeholder = '填写这段的动作描述…';
     caption.setAttribute('aria-label','第 ' + (i+1) + ' 段 caption');
@@ -493,7 +589,8 @@ function updateCategories() {
   }));
 }
 function updateButtons() {
-  for (const field of $('segment-list').querySelectorAll('textarea,input,button')) field.disabled = loading || saving;
+  updateVocabularyControls();
+  for (const field of $('segment-list').querySelectorAll('textarea,input,select,button')) field.disabled = loading || saving;
   $('undo').disabled = !past.length || loading || saving;
   $('redo').disabled = !future.length || loading || saving;
   for (const id of ['submit','mark','blank','import','export','kind','author','source']) $(id).disabled = loading || saving;
@@ -1030,6 +1127,9 @@ function showHelp() {
   dialog.showModal();
 }
 function wire() {
+  $('vocabulary-import').onclick = () => $('vocabulary-file').click();
+  $('vocabulary-file').onchange = event => importVocabularyFile(event.target.files[0]);
+  $('vocabulary-reset').onclick = resetVocabulary;
   $('select-all-segments').onclick = selectAllSegments;
   $('merge-selected').onclick = mergeSelectedSegments;
   $('clear-selection').onclick = clearSegmentSelection;
@@ -1151,6 +1251,7 @@ async function init() {
   $('instruction').textContent = info.instruction || '—';
   $('episode-info').textContent = 'Episode ' + info.episode_index + ' · ' + info.frame_count + ' 帧 · ' + duration().toFixed(2) + ' s';
   $('scrub').max = info.frame_count - 1;
+  await initializeVocabulary();
   mountVideos();
   ruler();
   wire();

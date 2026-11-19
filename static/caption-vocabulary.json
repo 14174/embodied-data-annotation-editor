@@ -1,0 +1,47 @@
+{
+  "id": "laundry_drying",
+  "name": "洗衣＋烘干",
+  "version": "1",
+  "items": [
+    {
+      "id": "washer_open",
+      "caption": "Open the door of the washing machine below",
+      "label_zh": "打开下层洗衣机门"
+    },
+    {
+      "id": "washer_load",
+      "caption": "Grasp the clothes to the washing machine",
+      "label_zh": "抓起衣物，放入洗衣机"
+    },
+    {
+      "id": "washer_close",
+      "caption": "Close the door of the washing machine below",
+      "label_zh": "关上下层洗衣机门"
+    },
+    {
+      "id": "washer_unload",
+      "caption": "Grasp the clothes from the washing machine to the basket",
+      "label_zh": "从洗衣机取出衣物，放回衣篮"
+    },
+    {
+      "id": "dryer_open",
+      "caption": "Open the door of the clothes dryer above",
+      "label_zh": "打开上层烘干机门"
+    },
+    {
+      "id": "dryer_load",
+      "caption": "Grasp the clothes to the dryer above",
+      "label_zh": "抓起衣物，放入上层烘干机"
+    },
+    {
+      "id": "dryer_close",
+      "caption": "Close the door of the clothes dryer above",
+      "label_zh": "关上上层烘干机门"
+    },
+    {
+      "id": "dryer_unload",
+      "caption": "Grasp the clothes from the dryer to the basket",
+      "label_zh": "从烘干机取出衣物，放回衣篮"
+    }
+  ]
+}

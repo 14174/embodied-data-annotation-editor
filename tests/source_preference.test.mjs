@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const script = fs.readFileSync(new URL('../static/app.mjs', import.meta.url), 'utf8')
-  .replace(/^import[^\n]+\n/, '').replace(/init\(\)\.catch[^\n]*;\s*$/, '');
+  .replace(/^import[^\n]+\n/gm, '').replace(/init\(\)\.catch[^\n]*;\s*$/, '');
 const storage = new Map();
 const row = caption => [{start_frame:0, end_frame:10, caption, category:''}];
 

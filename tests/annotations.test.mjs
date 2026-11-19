@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 // Run the production page logic with small DOM/network substitutes; no video is loaded.
 const source = fs.readFileSync(new URL('../static/app.mjs', import.meta.url), 'utf8')
-  .replace(/^import[^\n]+\n/, '').replace(/init\(\)\.catch[^\n]*;\s*$/, '');
+  .replace(/^import[^\n]+\n/gm, '').replace(/init\(\)\.catch[^\n]*;\s*$/, '');
 class Events {
   constructor() { this.listeners=new Map(); }
   addEventListener(name,listener) { const list=this.listeners.get(name)||[];list.push(listener);this.listeners.set(name,list); }

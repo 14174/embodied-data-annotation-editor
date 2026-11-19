@@ -20,6 +20,12 @@ The source selector shows the submitted human annotation count for the current t
 
 Click **使用说明** (Help) in the header for naming, submission and overwrite rules, annotation guidance, shortcuts, multi-user synchronization, and draft recovery. Opening the guide pauses playback without changing your annotations.
 
+## Caption vocabulary and free text
+
+Subtask cards offer a standard-caption dropdown alongside the editable text field. The default vocabulary contains eight washing/drying instructions. Selecting an item inserts its exact English caption, supports Undo, and leaves boundaries unchanged. Modified captions are marked as custom unless they exactly match a vocabulary item. Repeated choices are allowed.
+
+Import a JSON vocabulary or restore the default using the toolbar. Imports persist per dataset in the current browser across episodes; they do not update other browsers or rewrite existing annotations. Fine action stays free text. See [the default JSON](static/caption-vocabulary.json) for the file format: string `id`, `name`, `version`, and nonempty `items` containing unique string `id` and `caption`, with optional `label_zh`. Files are limited to 1 MB. To update the team default, replace the deployed JSON; users with personal imports can click Restore default. Annotation JSON retains the existing caption field.
+
 ## Caption assistance (optional)
 
 Subtask cards provide two independent actions when a model service is configured:

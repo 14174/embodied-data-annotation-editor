@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source = fs.readFileSync(new URL('../static/app.mjs', import.meta.url), 'utf8')
-  .replace(/^import[^\n]+\n/, '').replace(/init\(\)\.catch[^\n]*;\s*$/, '');
+  .replace(/^import[^\n]+\n/gm, '').replace(/init\(\)\.catch[^\n]*;\s*$/, '');
 const nodes = new Map();
 function element() { return {value:'',textContent:'',open:false,disabled:false,children:[],
   showModal(){this.open=true;},close(){this.open=false;},focus(){},
