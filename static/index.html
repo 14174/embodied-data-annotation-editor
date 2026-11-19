@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=24"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=25"></head>
 <body>
 <div class="top-strip"><strong>机器人数据 · 标注工作台</strong><span>独立样例 · 编辑结果单独保存</span><span id="save-status" role="status">正在加载…</span></div>
 <header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions">
@@ -10,6 +10,12 @@
 <button id="previous-annotation" type="button" title="向前循环查找当前类型尚无人提交人工标注的 Episode" disabled>← 标注上一条</button>
 <button id="next-annotation" type="button" title="向后循环查找当前类型尚无人提交人工标注的 Episode" disabled>标注下一条 →</button>
 <button class="primary" id="submit">提交标注</button></div></header>
+<section class="collection-toolbar" aria-label="数据合集与日期">
+<label>数据合集<select id="collection-select" aria-label="数据合集"><option>正在加载…</option></select></label>
+<label>日期数据集<select id="date-select" aria-label="日期数据集"><option>正在加载…</option></select></label>
+<button id="collection-add" type="button">添加数据合集</button><button id="collection-refresh" type="button">刷新数据集</button><button id="collection-archive" type="button">设为只读</button>
+<span id="collection-feedback" role="status" aria-live="polite"></span>
+</section>
 <section class="toolbar">
 <label><span id="episode-selector-label">数据样例</span><select id="dataset"><option value="18763">三视角 · Episode 0</option><option value="18764">位姿与夹爪 · Episode 86</option></select></label>
 <label>标注类型<select id="kind"><option value="subtask">Subtask · 子任务</option><option value="fine_action">Fine action · 细粒度动作</option></select></label>
@@ -52,6 +58,14 @@
 <section class="panel timeline-panel"><div class="section-title"><strong>VIDEO TIMELINE</strong><span id="timeline-hint">相邻标注点自动成段 · 拖动分界线调整两侧区间</span><div><button id="zoom-out" aria-label="缩小时间轴">−</button><span id="zoom-label">1×</span><button id="zoom-in" aria-label="放大时间轴">＋</button></div></div><div id="timeline-scroll"><div id="timeline-content"><div id="ruler"></div><div id="segments-track"></div><div id="playhead"><i></i></div></div></div><div class="timeline-footer"><span id="frame-info"></span><span>首尾固定 · 共享边界 · 按帧吸附</span></div></section>
 <details class="panel signals-panel"><summary>机器人状态曲线 <span>与视频时间同步，点击曲线定位</span></summary><div id="signal-options"></div><div id="signal-plots"></div></details>
 <footer><span id="annotation-stats">—</span><span>草稿保存在此浏览器 · 提交后按标注人与类型独立保存</span></footer>
+<dialog id="collection-dialog" aria-labelledby="collection-title">
+<div class="help-header"><h2 id="collection-title">添加服务器数据合集</h2><button id="collection-close" type="button">关闭 ×</button></div>
+<div class="help-body"><p>填写服务器可访问的合集目录。扫描其直属日期目录，勾选后添加；原始数据保持只读。</p>
+<label class="review-field">合集名称<input id="collection-name" maxlength="100" placeholder="例如：洗衣＋烘干采集"></label>
+<label class="review-field">服务器目录绝对路径<input id="collection-path" placeholder="/data/laundry"></label>
+<div class="dialog-actions"><button id="collection-scan" type="button">扫描日期目录</button><button id="collection-confirm" type="button" class="primary" disabled>确认添加</button></div>
+<p id="collection-dialog-feedback" role="status" aria-live="polite"></p><div id="collection-preview"></div><p class="help-note">支持日期根目录带索引，或日期下每个 episode 子目录自带索引。添加后可刷新发现新日期，数据暂不可用时保留登记与人工标注。</p></div>
+</dialog>
 <dialog id="caption-assist-dialog" aria-labelledby="caption-assist-title">
   <div class="help-header"><h2 id="caption-assist-title">精简整理 · Subtask</h2><button id="caption-assist-close" type="button">取消／关闭 ×</button></div>
   <div class="help-body">
@@ -80,6 +94,7 @@
   <div class="help-header"><h2 id="help-title">使用说明</h2><button id="close-help" type="button" aria-label="关闭使用说明">关闭 ×</button></div>
   <div class="help-body">
     <p class="help-intro">先选择标注类型和 episode，对照视频核对分段与文字，填写标注人后提交。模型预标注只是起稿，需人工检查。</p>
+    <section><h3>多合集与日期切换</h3><p>顶部选择数据合集，再选择日期数据集。切换前保存当前草稿，各数据集记住最近 episode、标注来源和词表。点击“添加数据合集”登记服务器目录；扫描后勾选日期并确认。“刷新数据集”发现新日期，不自动切换当前页面。“设为只读”保留标注与导出，禁止提交；可取消归档。</p></section>
     <section><h3>Caption 闭集与自由标注</h3><p>Subtask 每段可从下拉框选择标准 caption，英文原文会填入输入框，也可直接手写。修改为词表之外的内容后显示“自定义”。同一选项可重复使用，不限制操作顺序。顶部可导入 JSON 词表或恢复默认；词表按数据集保存在当前浏览器，跨 episode 使用。更换词表不改已有 caption，选择结果可撤销；完成后仍需提交。</p></section>
     <section><h3>1. 署名与“登录”规则</h3>
       <ul>
@@ -169,5 +184,5 @@
   </form>
 </dialog>
 <datalist id="categories"></datalist>
-<script type="module" src="/editor-static/app.mjs?v=29"></script>
+<script type="module" src="/editor-static/app.mjs?v=30"></script>
 </body></html>

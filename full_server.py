@@ -1,5 +1,8 @@
 """Serve the full v3 dataset with a separate writable annotation root."""
 import argparse
+import json
+from threading import RLock
+from urllib.parse import parse_qs, urlencode
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
@@ -8,10 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from storage import TYPES, AnnotationConflict, AnnotationStore, next_episode, episode_statuses
 from v3_dataset import ReviewDataset
 from caption_assist import simplify, AssistUnavailable
+from dataset_catalog import DatasetCatalog
 
 
-def create_app(root, output):
-    dataset = ReviewDataset(root)
+def create_dataset_app(root, output, dataset=None, dataset_id="default"):
+    dataset = dataset or ReviewDataset(root)
     output = output.resolve()
     if output == root.resolve() or root.resolve() in output.parents:
         raise ValueError('标注输出目录必须独立于原始数据')
@@ -41,7 +45,9 @@ def create_app(root, output):
     @app.get('/editor-api/info')
     def info(episode: int = 0):
         get_episode(episode)
-        return dataset.info(episode)
+        data = dataset.info(episode)
+        data.update(dataset_id=dataset_id, legacy_dataset_name=root.name if dataset_id == 'default' else None)
+        return data
 
     @app.post('/editor-api/caption-assist')
     def caption_assist(payload: dict, response: Response, episode: int = 0):
@@ -145,13 +151,15 @@ def create_app(root, output):
 
     @app.post('/editor-api/review-flags')
     def flag_episode(payload: dict, episode: int = 0):
+        if payload.get('dataset_id', dataset_id) != dataset_id:
+            raise HTTPException(422, '提交的数据集与当前页面不一致')
         destination = store(episode)
         if payload.get('episode_index') != episode:
             raise HTTPException(422, '异常备注的 episode 与当前页面不一致')
         try:
             return destination.flag(
                 payload.get('annotator'), payload.get('annotation_type'), payload.get('note'),
-                {'dataset_name': dataset.root.name, 'episode_index': episode, 'fps': dataset.fps,
+                {'dataset_name': dataset.root.name, 'dataset_id': dataset_id, 'episode_index': episode, 'fps': dataset.fps,
                  'original_instruction': dataset.info(episode)['instruction']},
             )
         except (ValueError, TypeError) as error:
@@ -159,6 +167,8 @@ def create_app(root, output):
 
     @app.post('/editor-api/annotation')
     def submit(payload: dict, episode: int = 0):
+        if payload.get('dataset_id', dataset_id) != dataset_id:
+            raise HTTPException(422, '提交的数据集与当前页面不一致')
         destination = store(episode)
         result = payload.get('result')
         if payload.get('episode_index') != episode or not isinstance(result, dict):
@@ -170,7 +180,7 @@ def create_app(root, output):
             return destination.save(
                 payload.get('annotator'), payload.get('annotation_type'), result.get('segments'),
                 payload.get('source_annotation'),
-                {'dataset_name': dataset.root.name, 'episode_index': episode, 'fps': dataset.fps, 'model': 'human'},
+                {'dataset_name': dataset.root.name, 'dataset_id': dataset_id, 'episode_index': episode, 'fps': dataset.fps, 'model': 'human'},
                 protect_existing=True, expected_created_at=expected,
             )
         except AnnotationConflict as error:
@@ -182,12 +192,111 @@ def create_app(root, output):
     return app
 
 
+def create_app(root, output):
+    """Resolve each request against its dataset; never switch shared global state."""
+    catalog = DatasetCatalog(root, output)
+    app = FastAPI(title='Robot annotation editor')
+    app.state.catalog = catalog
+    applications, app_lock = {}, RLock()
+    static = Path(__file__).parent/'static'
+
+    def describe(data, kind='subtask'):
+        if kind not in TYPES:
+            raise ValueError('标注类型无效')
+        for collection in data['collections']:
+            for item in collection['datasets']:
+                item['archived'] = item['id'] in catalog.archived
+                if item['available']:
+                    reader, labels = catalog.open(item['id'])
+                    statuses = episode_statuses(labels,reader.rows,kind)
+                    item['annotated_count'] = sum(row['human_count'] > 0 for row in statuses)
+                    item['flagged_count'] = sum(row['needs_review'] for row in statuses)
+        return data
+
+    @app.get('/editor-api/collections')
+    def collections(response: Response, kind: str='subtask'):
+        response.headers['Cache-Control']='no-store'
+        try: return describe(catalog.view(),kind)
+        except ValueError as error: raise HTTPException(422,str(error))
+
+    @app.post('/editor-api/collections/scan')
+    def scan(payload: dict):
+        try: return {'datasets':catalog.scan(payload.get('path',''))}
+        except (ValueError,OSError,TypeError) as error: raise HTTPException(422,str(error))
+
+    @app.post('/editor-api/collections')
+    def add_collection(payload: dict):
+        try: return catalog.add(payload.get('name'),payload.get('path'),payload.get('dates'))
+        except (ValueError,OSError,TypeError) as error: raise HTTPException(422,str(error))
+
+    @app.post('/editor-api/collections/refresh')
+    def refresh(payload: dict):
+        try:
+            data=catalog.refresh(payload.get('collection_id'))
+            with app_lock:
+                for item in data['datasets']: applications.pop(item['id'],None)
+            return data
+        except (ValueError,OSError,TypeError) as error: raise HTTPException(422,str(error))
+
+    @app.post('/editor-api/datasets/archive')
+    def archive(payload: dict):
+        try:
+            catalog.archive(payload.get('dataset_id'),payload.get('archived'))
+            return {'ok':True}
+        except (ValueError,OSError,TypeError) as error: raise HTTPException(422,str(error))
+
+    class Dispatch:
+        def __init__(self, app): self.router=app
+        async def __call__(self, scope, receive, send):
+            from starlette.responses import JSONResponse
+            path=scope.get('path','')
+            management=path.startswith('/editor-api/collections') or path=='/editor-api/datasets/archive'
+            if scope['type'] != 'http' or not path.startswith('/editor-api/') or management:
+                return await self.router(scope,receive,send)
+            params=parse_qs(scope.get('query_string',b'').decode())
+            key=params.get('dataset',[catalog.default_id])[0]
+            try:
+                reader,labels=catalog.open(key)
+                if 'episode' not in params:
+                    scope=dict(scope,query_string=scope.get('query_string',b'')+b'&'+urlencode({'episode':min(reader.rows)}).encode())
+                if scope['method'] not in ('GET','HEAD') and key in catalog.archived:
+                    return await JSONResponse({'detail':'该数据集已归档，只能查看和导出'},status_code=403)(scope,receive,send)
+                if path in ('/editor-api/vocabulary','/editor-api/model-preset'):
+                    name='caption-vocabulary.json' if path.endswith('vocabulary') else 'flora-sft-v1.json'
+                    file=reader.root/name
+                    if not file.is_file() and key==catalog.default_id: file=static/name
+                    data=json.loads(file.read_text()) if file.is_file() else None
+                    return await JSONResponse(data,headers={'Cache-Control':'no-store'})(scope,receive,send)
+                with app_lock:
+                    if key not in applications:
+                        applications[key]=create_dataset_app(reader.root,labels,reader,key)
+                    target=applications[key]
+            except (ValueError,OSError,KeyError,TypeError) as error:
+                return await JSONResponse({'detail':str(error)},status_code=404)(scope,receive,send)
+            return await target(scope,receive,send)
+
+    # A middleware preserves FastAPI's test/lifespan interfaces and routes normal
+    # requests to isolated single-dataset apps without mutating a global reader.
+    app.add_middleware(Dispatch)
+    @app.get('/')
+    def home(): return RedirectResponse('/editor')
+    @app.get('/editor')
+    def editor(): return FileResponse(static/'index.html',headers={'Cache-Control':'no-store'})
+    @app.get('/api/health')
+    def health():
+        reader,_=catalog.open(catalog.default_id)
+        return {'ok':True,'episodes':len(reader.rows),'multi_dataset':True}
+    app.mount('/editor-static',StaticFiles(directory=static),name='editor-static')
+    return app
+
+
 if __name__ == '__main__':
     import uvicorn
     parser = argparse.ArgumentParser(description='Run the robot video annotation editor.')
     parser.add_argument('dataset', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('legacy_port', nargs='?', type=int, help=argparse.SUPPRESS)
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8000)
     args = parser.parse_args()
-    uvicorn.run(create_app(args.dataset, args.output), host=args.host, port=args.port)
+    uvicorn.run(create_app(args.dataset, args.output), host='0.0.0.0' if args.legacy_port is not None else args.host, port=args.legacy_port or args.port)

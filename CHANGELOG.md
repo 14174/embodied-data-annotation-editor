@@ -1,5 +1,13 @@
 # Version history / 版本记录
 
+## 2026-11-19 · Dataset collections / 多合集与日期切换
+
+- Add server-directory scanning, date previews and confirmation, refresh, per-type progress and read-only archiving.
+- Isolate requests, labels, browser drafts, vocabularies and last-episode positions by dataset ID; preserve default outputs and migrate legacy browser keys once.
+- Support indexed date roots and independently indexed episode directories. Retain offline entries and provide dataset switching when a dataset cannot load.
+- 使用合成视频验证两日期切换、模拟提交、草稿／词表隔离、最近 episode 恢复和只读归档；33 项 Python 与 10 组 JavaScript 测试通过。
+
+
 ## 2026-11-19 · Caption vocabulary / Caption 闭集
 
 - Add eight washing/drying caption choices to Subtask cards while retaining free text and Undo/Redo.

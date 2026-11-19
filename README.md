@@ -20,6 +20,18 @@ The source selector shows the submitted human annotation count for the current t
 
 Click **使用说明** (Help) in the header for naming, submission and overwrite rules, annotation guidance, shortcuts, multi-user synchronization, and draft recovery. Opening the guide pauses playback without changing your annotations.
 
+## Collections and date datasets
+
+Keep the existing startup command. Add a server-side collection directory using the toolbar, scan its immediate date folders, select available dates and confirm. Switch using Collection → Date dataset → Episode. Current drafts are saved before navigation, and each dataset remembers its last episode.
+
+Dates may contain the indexed layout described below, or numbered `episode_XXXXXX` directories, each with its own `meta/info.json` and exactly one indexed episode. Such episode folders must use the same fps. Bare video folders without metadata are shown as unavailable. Source data stays read-only.
+
+Refresh discovers additional dates without navigating away and retains offline entries. Dataset progress counts episodes with human submissions of the current type. Archive makes a dataset read-only on the server; unarchive restores submission access.
+
+Registrations persist in `OUTPUT/.dataset-collections.json`; new labels live under `OUTPUT/collections/<collection-id>/<date>/episode_XXXXXX/`. Existing default labels keep their original paths. Stable dataset IDs isolate drafts, source preferences, vocabularies, requests and last-episode positions. Old default browser workspaces migrate once.
+
+Each date root may provide `caption-vocabulary.json` and `flora-sft-v1.json`. Without them, free text remains available and that model source is absent. The default dataset keeps the existing static-file fallback.
+
 ## Caption vocabulary and free text
 
 Subtask cards offer a standard-caption dropdown alongside the editable text field. The default vocabulary contains eight washing/drying instructions. Selecting an item inserts its exact English caption, supports Undo, and leaves boundaries unchanged. Modified captions are marked as custom unless they exactly match a vocabulary item. Repeated choices are allowed.
@@ -178,6 +190,7 @@ Place deployment-specific predictions in `static/flora-sft-v1.json` to add the T
 ## Tests
 
 ```sh
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests
 node --test tests/*.test.mjs
 ```

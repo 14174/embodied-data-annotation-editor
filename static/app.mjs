@@ -1,11 +1,14 @@
 import { splitAt, moveBoundary, mergeAt, mergeSelected } from './segments.mjs?v=19';
 import {validateVocabulary} from './caption-vocabulary.mjs?v=1';
+import {migrateLegacyWorkspace, mountCollections} from './collections.mjs?v=1';
 
 const $ = id => document.getElementById(id);
 const colors = ['#5a95d4', '#5eaf94', '#9e89db', '#d18c77', '#baa265'];
+const pageDataset = new URLSearchParams(location.search).get('dataset');
 const pageEpisode = new URLSearchParams(location.search).get('episode');
 function apiUrl(path) {
   const url = new URL('/editor-api/' + path, location.origin);
+  if (pageDataset !== null) url.searchParams.set('dataset', pageDataset);
   if (pageEpisode !== null) url.searchParams.set('episode', pageEpisode);
   return url;
 }
@@ -18,7 +21,7 @@ const api = async (path, options) => {
   }
   return response.json();
 };
-let info, preset, signals;
+let info, preset, signals, collectionControls;
 let modelPreset = null, modelSourceWarning = '';
 let captionVocabulary = null, vocabularyBusy = false;
 let selectedSource = 'blank';
@@ -37,10 +40,10 @@ const duration = () => info.frame_count / info.fps;
 const frame = () => Math.min(info.frame_count - 1, Math.floor((master()?.currentTime || 0) * info.fps + 0.0001));
 const seconds = f => (f / info.fps).toFixed(2);
 const percent = f => f / info.frame_count * 100 + '%';
-const draftKey = (selection = selectedSource) => JSON.stringify(['annotation-editor-workspace', info.dataset_name, info.episode_index, kind, selection]);
-const previousDraftKey = () => JSON.stringify(['annotation-editor-workspace', info.dataset_name, info.episode_index, kind]);
-const sourcePreferenceKey = () => JSON.stringify(['annotation-editor-source', info.dataset_name, kind]);
-const legacyDraftKey = name => JSON.stringify(['annotation-editor', info.dataset_name, info.episode_index, name, kind]);
+const draftKey = (selection = selectedSource) => JSON.stringify(['annotation-editor-workspace', (info.dataset_id || info.dataset_name), info.episode_index, kind, selection]);
+const previousDraftKey = () => JSON.stringify(['annotation-editor-workspace', (info.dataset_id || info.dataset_name), info.episode_index, kind]);
+const sourcePreferenceKey = () => JSON.stringify(['annotation-editor-source', (info.dataset_id || info.dataset_name), kind]);
+const legacyDraftKey = name => JSON.stringify(['annotation-editor', (info.dataset_id || info.dataset_name), info.episode_index, name, kind]);
 const blank = () => [{start_frame:0, end_frame:info.frame_count, caption:'', category:''}];
 const snapshot = () => ({segments:structuredClone(segments), source, selectedSource});
 function sourceChoice(value) {
@@ -72,6 +75,7 @@ function warn(text = '') {
 function persist() {
   try {
     localStorage.setItem(draftKey(), JSON.stringify(snapshot()));
+    if (info.dataset_id) localStorage.setItem(JSON.stringify(['annotation-editor-position',info.dataset_id]),JSON.stringify({episode:info.episode_index}));
     status('本地草稿已保存');
     return true;
   } catch {
@@ -80,8 +84,12 @@ function persist() {
   }
 }
 
-const vocabularyKey = () => JSON.stringify(['annotation-editor-vocabulary', info.dataset_name, 'subtask']);
+const vocabularyKey = () => JSON.stringify(['annotation-editor-vocabulary', (info.dataset_id || info.dataset_name), 'subtask']);
 async function defaultVocabulary() {
+  if (info.dataset_id) {
+    const value = await api('vocabulary');
+    return value === null ? null : validateVocabulary(value);
+  }
   const response = await fetch('/editor-static/caption-vocabulary.json', {cache:'no-store'});
   if (!response.ok) throw Error('默认词表读取失败');
   return validateVocabulary(await response.json());
@@ -90,7 +98,7 @@ function updateVocabularyControls() {
   $('vocabulary-bar').hidden = kind !== 'subtask';
   $('vocabulary-name').textContent = captionVocabulary
     ? captionVocabulary.name + ' · v' + captionVocabulary.version + ' · ' + captionVocabulary.items.length + ' 项'
-    : '词表暂不可用，可自由标注';
+    : '未设置词表，可自由标注或导入';
   for (const id of ['vocabulary-import','vocabulary-reset','vocabulary-file']) {
     $(id).disabled = vocabularyBusy || loading || saving || !!drag;
   }
@@ -113,7 +121,7 @@ async function initializeVocabulary() {
   updateVocabularyControls();
 }
 function activateVocabulary(value, reset = false) {
-  const next = validateVocabulary(value);
+  const next = value === null ? null : validateVocabulary(value);
   if (reset) localStorage.removeItem(vocabularyKey());
   else localStorage.setItem(vocabularyKey(), JSON.stringify(next));
   captionVocabulary = next;
@@ -874,7 +882,7 @@ function askOverwrite() {
   });
 }
 function payload() {
-  return {dataset_name:info.dataset_name, episode_index:info.episode_index, fps:info.fps,
+  return {dataset_name:info.dataset_name, ...(info.dataset_id ? {dataset_id:info.dataset_id} : {}), episode_index:info.episode_index, fps:info.fps,
     frame_count:info.frame_count, annotation_type:kind, annotator:author,
     source_annotation:source, result:{segments}};
 }
@@ -909,6 +917,7 @@ async function submit() {
     localStorage.removeItem(draftKey());
     status('已提交');
     await Promise.all([refreshAnnotations(),refreshEpisodeStatuses()]);
+    collectionControls?.refresh().catch(error=>warn(error.message));
   } catch(error) { warn(error.message); }
   finally { saving = false; updateButtons(); }
 }
@@ -1176,7 +1185,7 @@ function wire() {
   $('redo').onclick = () => restore(future,past);
   $('author').onchange = updateAuthor;
   $('author').onkeydown = event => { if (event.key === 'Enter') $('author').blur(); };
-  $('kind').onchange = async () => { await context(); refreshAnnotations(); refreshEpisodeStatuses(); };
+  $('kind').onchange = async () => { await context(); refreshAnnotations(); refreshEpisodeStatuses(); collectionControls?.refresh().catch(error=>warn(error.message)); };
   wireEpisodeSelector();
   $('previous-in-order').onclick = () => sequentialEpisode(-1);
   $('next-in-order').onclick = () => sequentialEpisode(1);
@@ -1216,21 +1225,25 @@ function wire() {
 }
 async function init() {
   [info,preset,submitted] = await Promise.all([api('info'),api('source'),api('annotations')]);
+  try { migrateLegacyWorkspace(localStorage,info); } catch { warn('旧草稿迁移失败，请检查浏览器存储空间。'); }
   if (info.episodes) {
     try {
-      const response = await fetch('/editor-static/flora-sft-v1.json', {cache:'no-store'});
+      const response = info.dataset_id
+        ? {status:200,ok:true,json:()=>api('model-preset')}
+        : await fetch('/editor-static/flora-sft-v1.json', {cache:'no-store'});
       if (response.status !== 404) {
         if (!response.ok) throw Error('读取模型结果失败');
         const data = await response.json();
-        const record = data.episodes.find(row => row.episode_index === info.episode_index);
-        if (data.source_annotation !== 'TempSeg-SFT-v1' || !record ||
+        const record = data?.episodes?.find(row => row.episode_index === info.episode_index);
+        if (data === null) { /* No model preset for this dataset. */ }
+        else if (data.source_annotation !== 'TempSeg-SFT-v1' || !record ||
             record.source_annotation !== data.source_annotation || record.annotation_type !== 'subtask' ||
             record.fps !== info.fps || record.frame_count !== info.frame_count ||
             !Array.isArray(record.result?.segments) || !record.result.segments.length ||
             record.result.segments.some(s => !Number.isInteger(s.start_frame) || !Number.isInteger(s.end_frame) ||
               s.start_frame < 0 || s.end_frame > info.frame_count || s.start_frame >= s.end_frame ||
               typeof s.caption !== 'string')) throw Error('模型结果与当前视频不一致');
-        modelPreset = record;
+        modelPreset = record || null;
       }
     } catch (error) {
       modelSourceWarning = 'SFT-v1 结果加载失败：' + error.message;
@@ -1257,6 +1270,12 @@ async function init() {
   wire();
   updateAuthor();
   await context();
+  if (info.dataset_id) {
+    try {
+      collectionControls = await mountCollections({info,api,getKind:()=>kind,isBusy:()=>saving||loading||!!drag,
+        beforeLeave:()=>{if(persist())return true;warn('草稿保存失败，请先导出 JSON。');return false;}});
+    } catch (error) { warn('数据合集列表加载失败：'+error.message); }
+  }
   refreshEpisodeStatuses();
   refreshReviewFlags();
   startAnnotationSync();
@@ -1269,4 +1288,13 @@ async function init() {
     $('signal-options').textContent = '状态曲线暂不可用。';
   }
 }
-init().catch(error => { warn('编辑页加载失败：' + error.message); status('加载失败'); });
+async function recoverDatasetLoad(error) {
+  warn('当前数据集加载失败：' + error.message + '。可在上方切换其他数据集。');
+  status('加载失败');
+  for (const id of ['submit','mark','import','blank','kind','export']) $(id).disabled=true;
+  try {
+    await mountCollections({info:{dataset_id:pageDataset||'default'},api,getKind:()=>kind,
+      isBusy:()=>false,beforeLeave:()=>true});
+  } catch { $('collection-feedback').textContent='合集列表暂不可用，请刷新重试。'; }
+}
+init().catch(recoverDatasetLoad);
