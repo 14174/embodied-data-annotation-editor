@@ -47,6 +47,32 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(self.next(5), {'episode_index': 9, 'unannotated': False})
         self.assertEqual(self.next(9), {'episode_index': 0, 'unannotated': False})
 
+    def test_previous_searches_backwards_then_wraps(self):
+        self.submit(2)
+        self.assertEqual(storage.next_episode(self.root, (0, 2, 5, 9), 5, 'subtask', -1),
+                         {'episode_index': 0, 'unannotated': True})
+        self.assertEqual(storage.next_episode(self.root, (0, 2, 5, 9), 0, 'subtask', -1),
+                         {'episode_index': 9, 'unannotated': True})
+        self.submit(9)
+        self.assertEqual(storage.next_episode(self.root, (0, 2, 5, 9), 0, 'subtask', -1),
+                         {'episode_index': 5, 'unannotated': True})
+
+    def test_previous_respects_type_and_all_submitted_result(self):
+        self.submit(2, 'fine_action')
+        self.assertEqual(storage.next_episode(self.root, (0, 2, 5, 9), 5, 'subtask', -1),
+                         {'episode_index': 2, 'unannotated': True})
+        self.assertEqual(storage.next_episode(self.root, (0, 2, 5, 9), 5, 'fine_action', -1),
+                         {'episode_index': 0, 'unannotated': True})
+        for index in (0, 2, 5, 9):
+            self.submit(index)
+        self.assertEqual(storage.next_episode(self.root, (0, 2, 5, 9), 5, 'subtask', -1),
+                         {'episode_index': 2, 'unannotated': False})
+
+    def test_invalid_direction_is_rejected(self):
+        for direction in (0, 2, -2):
+            with self.assertRaises(ValueError):
+                storage.next_episode(self.root, (0, 2), 0, 'subtask', direction)
+
     def test_single_episode_has_no_destination_and_invalid_type_is_rejected(self):
         self.assertEqual(self.next(0, indexes=(0,)), {'episode_index': None, 'unannotated': False})
         with self.assertRaises(ValueError):

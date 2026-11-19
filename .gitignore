@@ -8,3 +8,6 @@ data/
 .env
 .env.*
 !.env.example
+
+# Deployment-specific model predictions
+/static/flora-sft-v1.json

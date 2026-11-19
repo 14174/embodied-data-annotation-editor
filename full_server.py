@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from storage import TYPES, AnnotationConflict, AnnotationStore, next_episode
+from storage import TYPES, AnnotationConflict, AnnotationStore, next_episode, episode_statuses
 from v3_dataset import ReviewDataset
 from caption_assist import simplify, AssistUnavailable
 
@@ -57,11 +57,19 @@ def create_app(root, output):
             raise HTTPException(503, str(error))
 
     @app.get('/editor-api/next-episode')
-    def next_unannotated(response: Response, episode: int = 0, kind: str = 'subtask'):
+    def next_unannotated(response: Response, episode: int = 0, kind: str = 'subtask', direction: int = 1):
         response.headers['Cache-Control'] = 'no-store'
         get_episode(episode)
         try:
-            return next_episode(output, dataset.rows, episode, kind)
+            return next_episode(output, dataset.rows, episode, kind, direction)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+
+    @app.get('/editor-api/episode-status')
+    def episode_status(response: Response, kind: str = 'subtask'):
+        response.headers['Cache-Control'] = 'no-store'
+        try:
+            return {'annotation_type': kind, 'episodes': episode_statuses(output, dataset.rows, kind)}
         except ValueError as error:
             raise HTTPException(422, str(error))
 

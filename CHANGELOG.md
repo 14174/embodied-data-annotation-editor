@@ -1,5 +1,15 @@
 # Version history / 版本记录
 
+## 2026-11-19 · Current deployed version / 当前部署版本
+
+- Four navigation buttons: sequential Previous/Next and annotation Previous/Next, which prioritize episodes without human submissions of the current type.
+- Persist the selected source across episodes, automatically load it, and keep the dropdown synchronized with fallback results.
+- Add Shift range selection, select-all, continuous batch merge, live episode status and stable dropdown scrolling.
+- Use the noun-first caption rewrite prompt `subtask-diversify-2-noun-first`.
+- Support optional deployment-local TempSeg-SFT-v1 predictions; internal prediction files are excluded from source control.
+- 新版包含双向导航、跨 episode 来源记忆、批量合并、实时标注状态、下拉框滚动修复和名词优先改写。安装命令与数据格式沿用原版。
+- Validation: 24 Python tests, eight JavaScript test files, and the standalone CLI import/help check passed.
+
 ## v0.2.0 · 2026-11-11
 
 Browser annotation with optional AI caption assistance. This release includes all changes since the fixed `v0.1.0` snapshot.

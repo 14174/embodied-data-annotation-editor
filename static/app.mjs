@@ -1,4 +1,4 @@
-import { splitAt, moveBoundary, mergeAt } from './segments.mjs';
+import { splitAt, moveBoundary, mergeAt, mergeSelected } from './segments.mjs?v=19';
 
 const $ = id => document.getElementById(id);
 const colors = ['#5a95d4', '#5eaf94', '#9e89db', '#d18c77', '#baa265'];
@@ -18,21 +18,50 @@ const api = async (path, options) => {
   return response.json();
 };
 let info, preset, signals;
+let modelPreset = null, modelSourceWarning = '';
+let selectedSource = 'blank';
 let segments = [], past = [], future = [], submitted = [];
 let author = '', kind = 'subtask', source = null, videos = [], active = -1, zoom = 1, drag = null;
 let loading = false, saving = false;
+let navigationPending = false;
 let humanAnnotationCount = 0, annotationRead = 0;
 let reviewFlags = [], reviewRead = 0, reviewSaving = false;
 let assistTarget = null, assistRequest = 0;
+let selectedSegments = new Set();
+let selectionAnchor = null;
+let episodeStatuses = new Map(), episodeStatusKind = null, episodeStatusRead = 0, episodeStatusFailed = false;
 const master = () => videos[0];
 const duration = () => info.frame_count / info.fps;
 const frame = () => Math.min(info.frame_count - 1, Math.floor((master()?.currentTime || 0) * info.fps + 0.0001));
 const seconds = f => (f / info.fps).toFixed(2);
 const percent = f => f / info.frame_count * 100 + '%';
-const draftKey = () => JSON.stringify(['annotation-editor-workspace', info.dataset_name, info.episode_index, kind]);
+const draftKey = (selection = selectedSource) => JSON.stringify(['annotation-editor-workspace', info.dataset_name, info.episode_index, kind, selection]);
+const previousDraftKey = () => JSON.stringify(['annotation-editor-workspace', info.dataset_name, info.episode_index, kind]);
+const sourcePreferenceKey = () => JSON.stringify(['annotation-editor-source', info.dataset_name, kind]);
 const legacyDraftKey = name => JSON.stringify(['annotation-editor', info.dataset_name, info.episode_index, name, kind]);
 const blank = () => [{start_frame:0, end_frame:info.frame_count, caption:'', category:''}];
-const snapshot = () => ({segments:structuredClone(segments), source});
+const snapshot = () => ({segments:structuredClone(segments), source, selectedSource});
+function sourceChoice(value) {
+  if (value === 'FLORA') return 'flora';
+  if (value === 'TempSeg-SFT-v1') return 'model:tempseg-sft-v1';
+  return value ? 'person:' + value : 'blank';
+}
+function previousDraft() {
+  for (const key of [previousDraftKey(), legacyDraftKey(author), legacyDraftKey('')]) {
+    const value = localStorage.getItem(key);
+    if (value) return {draft:JSON.parse(value), key};
+  }
+  return null;
+}
+function sourceDraft(selection) {
+  const value = localStorage.getItem(draftKey(selection));
+  if (value) return JSON.parse(value);
+  const old = previousDraft();
+  if (!old || sourceChoice(old.draft.source) !== selection) return null;
+  localStorage.setItem(draftKey(selection), JSON.stringify(old.draft));
+  localStorage.removeItem(old.key);
+  return old.draft;
+}
 const status = text => { $('save-status').textContent = text; };
 function warn(text = '') {
   $('notice').hidden = !text;
@@ -50,62 +79,53 @@ function persist() {
 }
 
 function switchEpisode(value, targetKind = kind) {
-  if (saving || loading) return;
+  if (saving || loading || drag) return;
   if (!persist()) {
     $('dataset').value = String(info.episode_index);
     warn('当前草稿保存失败，已保留在页面中。请导出 JSON 后再切换。');
     return;
   }
   const url = new URL(location.href);
-  url.searchParams.set('episode', value);
+  if (info.episodes) url.searchParams.set('episode', value);
+  else url.port = value;
   url.searchParams.set('kind', targetKind);
   location.href = url.href;
 }
 
-async function previousSubmission() {
-  if (saving || loading || drag || !info.episodes) return;
-  const authorInput = $('author');
-  const requestedAuthor = authorInput.value.trim();
-  if (!requestedAuthor) {
-    warn('请先填写标注人姓名，以查找上次提交。');
-    authorInput.focus();
-    return;
-  }
-  const button = $('previous-submission');
-  button.disabled = true;
-  warn();
-  try {
-    const previous = await api('last-submission?' + new URLSearchParams({author: requestedAuthor}));
-    if (authorInput.value.trim() !== requestedAuthor) return;
-    if (!previous) {
-      warn('这个署名在当前数据集里还没有提交记录。');
-    } else if (previous.episode_index === info.episode_index && previous.annotation_type === kind) {
-      warn('当前就是这个署名最近一次提交的 episode。');
-    } else {
-      switchEpisode(previous.episode_index, previous.annotation_type);
-    }
-  } catch (error) {
-    warn('读取上次提交失败：' + error.message);
-  } finally {
-    button.disabled = false;
-  }
+function updateNavigationButtons() {
+  const count = info.episodes?.length || 0;
+  const position = info.episodes?.findIndex(row => row.episode_index === info.episode_index) ?? -1;
+  const blocked = saving || loading || !!drag || navigationPending;
+  $('previous-in-order').disabled = blocked || position <= 0;
+  $('next-in-order').disabled = blocked || position < 0 || position >= count - 1;
+  $('previous-annotation').disabled = blocked || count < 2;
+  $('next-annotation').disabled = blocked || count < 2;
 }
 
-async function nextEpisode() {
-  if (saving || loading) return;
-  const buttons = ['next-episode', 'next-episode-header'].map($);
+function sequentialEpisode(direction) {
+  if (saving || loading || drag || navigationPending || !info.episodes) return;
+  const position = info.episodes.findIndex(row => row.episode_index === info.episode_index);
+  if (position < 0) return;
+  const target = info.episodes[position + direction];
+  if (target) switchEpisode(target.episode_index);
+}
+
+async function nextEpisode(direction = 1) {
+  if (saving || loading || drag || navigationPending || !info.episodes) return;
   const requestedKind = kind;
-  buttons.forEach(button => { button.disabled = true; });
+  navigationPending = true;
+  updateNavigationButtons();
   try {
-    const next = await api('next-episode?' + new URLSearchParams({kind}));
+    const next = await api('next-episode?' + new URLSearchParams({kind, direction}));
     if (kind !== requestedKind) return;
     if (next.episode_index === null) warn('没有其他 episode 可切换。');
-    else if (!next.unannotated) warn('其余 episode 的当前类型都已有人工标注。如需复标，请从顶部列表手动选择。');
+    else if (!next.unannotated) warn('其余 episode 的当前类型都已有人工标注，可用顺序跳转复标。');
     else switchEpisode(next.episode_index);
   } catch (error) {
-    warn('读取下一条失败：' + error.message);
+    warn('读取标注跳转目标失败：' + error.message);
   } finally {
-    buttons.forEach(button => { button.disabled = !info.episodes || info.episodes.length < 2; });
+    navigationPending = false;
+    updateNavigationButtons();
   }
 }
 function seek(target) {
@@ -165,14 +185,26 @@ function change(next, nextSource = source, previous = snapshot()) {
   future = [];
   segments = next;
   source = nextSource;
+  selectedSource = sourceChoice(source);
+  selectedSegments.clear();
+  selectionAnchor = null;
   persist();
   render();
 }
 function restore(from, to) {
   if (loading || saving || drag || !from.length) return;
+  const previousSource = source;
   to.push(snapshot());
   ({segments, source} = from.pop());
+  selectedSource = sourceChoice(source);
+  selectedSegments.clear();
+  selectionAnchor = null;
   persist();
+  if (source !== previousSource) {
+    try { localStorage.setItem(sourcePreferenceKey(), selectedSource); }
+    catch { warn('来源选择保存失败，切换 episode 后可能需要重新选择。'); }
+    sourceChoices();
+  }
   render();
 }
 function updatePlayback(at = frame(), force = false) {
@@ -184,8 +216,6 @@ function updatePlayback(at = frame(), force = false) {
   if (index === active && !force) return;
   const changed = index !== active;
   active = index;
-  $('prev-segment').disabled = index <= 0;
-  $('next-segment').disabled = index < 0 || index >= segments.length - 1;
   $('caption-preview').textContent = segments[index]?.caption || '当前区间尚无 caption';
   document.querySelectorAll('[data-segment]').forEach(el => el.classList.toggle('active', Number(el.dataset.segment) === index));
   const list = $('segment-list');
@@ -225,6 +255,14 @@ function mountVideos() {
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
+    video.addEventListener('loadedmetadata', () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        view.style.setProperty('--camera-ratio',video.videoWidth / video.videoHeight);
+        const totalRatio = videos.reduce((sum,camera) => sum +
+          (camera.videoWidth > 0 && camera.videoHeight > 0 ? camera.videoWidth / camera.videoHeight : 4/3),0);
+        $('workspace').style.setProperty('--camera-total-ratio',totalRatio);
+      }
+    });
     video.src = apiUrl('video?' + new URLSearchParams({camera:key}));
     video.addEventListener('click', togglePlay);
     video.addEventListener('error', () => warn('无法读取相机 ' + key + ' 的视频'));
@@ -356,6 +394,7 @@ function renderCards() {
   segments.forEach((segment,i) => {
     const card = document.createElement('article');
     card.className = 'segment-card';
+    card.classList.toggle('selected',selectedSegments.has(i));
     card.dataset.segment = i;
     card.onclick = () => selectSegment(i);
     card.style.setProperty('--color',colors[i % colors.length]);
@@ -365,7 +404,25 @@ function renderCards() {
     number.textContent = String(i+1).padStart(2,'0');
     const timestamp = document.createElement('button');
     timestamp.className = 'time-btn';
-    head.append(number,timestamp);
+    const selection = document.createElement('input');
+    selection.type = 'checkbox';
+    selection.className = 'segment-selection';
+    selection.checked = selectedSegments.has(i);
+    selection.setAttribute('aria-label','选择第 ' + (i+1) + ' 段');
+    selection.title = '按住 Shift 点击另一段，可连续勾选或取消选择';
+    selection.onclick = event => {
+      event.stopPropagation();
+      const start = event.shiftKey && selectionAnchor !== null ? Math.min(selectionAnchor,i) : i;
+      const end = event.shiftKey && selectionAnchor !== null ? Math.max(selectionAnchor,i) : i;
+      for (let index=start;index<=end;index++) {
+        if (selection.checked) selectedSegments.add(index);
+        else selectedSegments.delete(index);
+      }
+      selectionAnchor = i;
+      syncSelectionCards();
+      updateBatchSelection();
+    };
+    head.append(selection,number,timestamp);
     if (kind === 'subtask') {
       for (const [mode, label, title] of [
         ['simplify','精简整理','把当前 caption 整理为简洁的 subtask，预览后采用'],
@@ -439,7 +496,46 @@ function updateButtons() {
   for (const field of $('segment-list').querySelectorAll('textarea,input,button')) field.disabled = loading || saving;
   $('undo').disabled = !past.length || loading || saving;
   $('redo').disabled = !future.length || loading || saving;
-  for (const id of ['submit','mark','blank','import','export','kind','author']) $(id).disabled = loading || saving;
+  for (const id of ['submit','mark','blank','import','export','kind','author','source']) $(id).disabled = loading || saving;
+  updateNavigationButtons();
+  updateBatchSelection();
+}
+function updateBatchSelection() {
+  const selected = [...selectedSegments].sort((a,b) => a-b);
+  const continuous = selected.length > 1 && selected.every((index,i) => !i || index === selected[i-1]+1);
+  $('batch-selection-status').textContent = '已选 ' + selected.length + ' 段' +
+    (selected.length > 1 && !continuous ? ' · 请选择连续分段' : '');
+  $('merge-selected').disabled = loading || saving || !!drag || !continuous;
+  $('clear-selection').disabled = loading || saving || !selected.length;
+  $('select-all-segments').disabled = loading || saving || !!drag || !segments.length || selected.length === segments.length;
+}
+function syncSelectionCards() {
+  for (const [index,card] of [...$('segment-list').children].entries()) {
+    card.classList.toggle('selected',selectedSegments.has(index));
+    const checkbox = card.querySelector('.segment-selection');
+    if (checkbox) checkbox.checked = selectedSegments.has(index);
+  }
+}
+function clearSegmentSelection() {
+  selectedSegments.clear();
+  selectionAnchor = null;
+  syncSelectionCards();
+  updateBatchSelection();
+}
+function selectAllSegments() {
+  if (loading || saving || drag) return;
+  selectedSegments = new Set(segments.map((_,index) => index));
+  selectionAnchor = null;
+  syncSelectionCards();
+  updateBatchSelection();
+}
+function mergeSelectedSegments() {
+  if (loading || saving || drag) return;
+  const next = mergeSelected(segments,[...selectedSegments]);
+  if (next === segments) { warn('请至少选择两个连续分段后合并。'); return; }
+  warn();
+  change(next);
+  status('已合并选中分段 · 可撤销，请检查 caption');
 }
 function render() {
   renderCards();
@@ -467,13 +563,66 @@ function sourceChoices() {
   $('human-annotation-count').textContent = '人工标注：' + humanAnnotationCount + ' 份';
   $('human-annotation-count').title = '当前标注类型下已提交的人工标注人数；预标注与本地草稿不计入。每 3 秒自动同步。';
   $('annotation-stats').textContent = kind + ' · ' + humanAnnotationCount + ' 份已提交';
-  const select = $('source'), selected = select.value;
+  const select = $('source');
   const options = [...(kind === 'subtask' && preset.result.segments.length ? [new Option('FLORA 预标注','flora')] : []),
-    ...records.map(r => new Option(r.annotator + ' 的标注', 'person:' + r.annotator))];
+    ...(kind === 'subtask' && modelPreset ? [new Option('TempSeg-SFT-v1 推理结果','model:tempseg-sft-v1')] : []),
+    ...records.map(r => new Option(r.annotator + ' 的标注', 'person:' + r.annotator)),
+    new Option('从零标注','blank')];
+  if (!options.some(option => option.value === selectedSource)) {
+    options.push(new Option((source || '当前来源') + '（本地草稿）', selectedSource));
+  }
   if (select.options.length !== options.length || options.some((option,i) =>
       option.value !== select.options[i].value || option.text !== select.options[i].text)) {
     select.replaceChildren(...options);
-    if (options.some(option => option.value === selected)) select.value = selected;
+  }
+  if (select.value !== selectedSource) select.value = selectedSource;
+}
+function renderEpisodeChoices() {
+  if (!info.episodes) return;
+  const select = $('dataset');
+  // Native popup scrolling can reset when option text changes, even to the same value.
+  if (document.activeElement === select) return;
+  const episodes = new Map(info.episodes.map(episode => [String(episode.episode_index),episode]));
+  for (const option of select.options) {
+    const episode = episodes.get(option.value);
+    if (!episode) continue;
+    const status = episodeStatusKind === kind ? episodeStatuses.get(episode.episode_index) : null;
+    const label = status
+      ? (status.needs_review ? '⚠ 异常 · ' : '') +
+        (status.human_count ? '已人工标注 ' + status.human_count + ' 份' : '未人工标注')
+      : (episodeStatusFailed ? '状态暂不可用' : '状态读取中');
+    const text = 'Episode ' + String(episode.episode_index).padStart(3,'0') + ' · ' +
+      (episode.frame_count / info.fps).toFixed(1) + ' s · ' + label;
+    if (option.text !== text) option.text = text;
+  }
+  const title = episodeStatusFailed ? '状态同步失败，已保留上次信息，稍后自动重试。' :
+    '人工标注数按当前类型统计；异常标记属于整条 episode。每 3 秒同步。';
+  if (select.title !== title) select.title = title;
+}
+function wireEpisodeSelector() {
+  $('dataset').onchange = event => switchEpisode(event.target.value);
+  $('dataset').onblur = renderEpisodeChoices;
+}
+async function refreshEpisodeStatuses() {
+  if (!info.episodes) return false;
+  const request = ++episodeStatusRead, requestedKind = kind;
+  try {
+    const data = await api('episode-status?' + new URLSearchParams({kind:requestedKind}));
+    if (request !== episodeStatusRead || kind !== requestedKind) return false;
+    if (data.annotation_type !== requestedKind || !Array.isArray(data.episodes) || data.episodes.some(row =>
+      !Number.isInteger(row.episode_index) || !Number.isInteger(row.human_count) || row.human_count < 0 ||
+      typeof row.needs_review !== 'boolean')) throw Error('episode 状态格式无效');
+    episodeStatuses = new Map(data.episodes.map(row => [row.episode_index,row]));
+    episodeStatusKind = requestedKind;
+    episodeStatusFailed = false;
+    renderEpisodeChoices();
+    return true;
+  } catch {
+    if (request === episodeStatusRead && kind === requestedKind) {
+      episodeStatusFailed = true;
+      renderEpisodeChoices();
+    }
+    return false;
   }
 }
 async function refreshAnnotations() {
@@ -571,7 +720,7 @@ async function submitReview() {
     try { localStorage.setItem('annotation-editor-author', reviewer); } catch {}
     $('review-note').value = '';
     reviewMessage('已标记异常，等待人工复审。', true);
-    await refreshReviewFlags();
+    await Promise.all([refreshReviewFlags(),refreshEpisodeStatuses()]);
   } catch (error) {
     reviewMessage('提交失败，备注已保留：' + error.message);
   } finally {
@@ -581,7 +730,7 @@ async function submitReview() {
   }
 }
 function startAnnotationSync() {
-  const refresh = () => Promise.all([refreshAnnotations(), refreshReviewFlags()]);
+  const refresh = () => Promise.all([refreshAnnotations(), refreshReviewFlags(),refreshEpisodeStatuses()]);
   setInterval(() => { if (!document.hidden) return refresh(); }, 3000);
   window.addEventListener('focus', refresh);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
@@ -590,32 +739,32 @@ function updateAuthor() {
   author = $('author').value.trim();
   localStorage.setItem('annotation-editor-author', author);
 }
-function context() {
+async function context() {
+  if (segments.length && !persist()) {
+    $('kind').value = kind;
+    warn('当前草稿保存失败，请导出后再切换类型。');
+    return;
+  }
+  selectedSegments.clear();
+  selectionAnchor = null;
   kind = $('kind').value;
-  sourceChoices();
+  renderEpisodeChoices();
   warn();
-  let draft = null;
+  let selection = kind === 'subtask' && preset.result.segments.length ? 'flora' : 'blank';
   try {
-    const key = draftKey();
-    const currentDraft = localStorage.getItem(key);
-    const legacyKey = [legacyDraftKey(author), legacyDraftKey('')].find(k => localStorage.getItem(k));
-    const legacy = !currentDraft && legacyKey ? localStorage.getItem(legacyKey) : null;
-    draft = JSON.parse(currentDraft || legacy || 'null');
-    if (legacy) {
-      localStorage.setItem(key, legacy);
-      localStorage.removeItem(legacyKey);
-    }
+    const preferred = localStorage.getItem(sourcePreferenceKey());
+    const old = previousDraft();
+    selection = preferred || (old ? sourceChoice(old.draft.source) : selection);
   } catch (error) {
     warn('读取本地草稿时遇到问题：' + error.message);
   }
-  const usePreset = kind === 'subtask' && preset.result.segments.length;
-  segments = draft ? structuredClone(draft.segments) : usePreset ? structuredClone(preset.result.segments) : blank();
-  source = draft ? draft.source : usePreset ? 'FLORA' : null;
-  if (preset.warning && kind === 'subtask' && !draft) warn('预标注暂不可用：' + preset.warning);
+  segments = [];
+  source = null;
+  selectedSource = 'blank';
   past = [];
   future = [];
-  status(draft ? '已恢复本地草稿' : '可开始标注');
-  render();
+  sourceChoices();
+  await importSource({selection, restoreDraft:true, remember:false, resetHistory:true});
 }
 function askOverwrite() {
   const dialog = $('overwrite-dialog');
@@ -662,21 +811,70 @@ async function submit() {
     }
     localStorage.removeItem(draftKey());
     status('已提交');
-    await refreshAnnotations();
+    await Promise.all([refreshAnnotations(),refreshEpisodeStatuses()]);
   } catch(error) { warn(error.message); }
   finally { saving = false; updateButtons(); }
 }
-async function importSource() {
-  const selected = $('source').value;
-  if (!selected || loading || saving) return;
+async function importSource({selection = $('source').value, restoreDraft = false, remember = true, resetHistory = false} = {}) {
+  if (!selection || loading || saving || drag) return;
+  if (segments.length && !persist()) {
+    sourceChoices();
+    warn('当前草稿保存失败，请导出后再加载其他来源。');
+    return;
+  }
   loading = true;
   updateButtons();
   try {
-    const record = selected === 'flora' ? preset : await api('annotation?' + new URLSearchParams({author:selected.slice(7),kind}));
-    if (!record) throw Error('这份标注已不可用');
-    change(structuredClone(record.result.segments), selected === 'flora' ? 'FLORA' : selected.slice(7));
-  } catch(error) { warn(error.message); }
-  finally { loading = false; updateButtons(); }
+    const alternatives = submitted.filter(row => row.annotation_type === kind).map(row => 'person:' + row.annotator);
+    if (kind === 'subtask') alternatives.push('flora', 'model:tempseg-sft-v1');
+    const candidates = selection === 'blank' ? ['blank'] : [...new Set([selection, ...alternatives])];
+    let draft = null, record = null, actualSelection = selection;
+    for (const candidate of candidates) {
+      draft = restoreDraft ? sourceDraft(candidate) : null;
+      record = draft ? {result:{segments:draft.segments}, source_annotation:draft.source} : null;
+      if (!record) {
+        if (candidate === 'blank') record = {result:{segments:blank()}, source_annotation:null};
+        else if (candidate === 'flora') record = kind === 'subtask' ? preset : null;
+        else if (candidate === 'model:tempseg-sft-v1') record = kind === 'subtask' ? modelPreset : null;
+        else if (candidate.startsWith('person:')) record = await api('annotation?' + new URLSearchParams({author:candidate.slice(7),kind}));
+        else throw Error('标注来源无效');
+      }
+      if (record?.result?.segments?.length) {
+        actualSelection = candidate;
+        break;
+      }
+      record = null;
+    }
+    if (remember) localStorage.setItem(sourcePreferenceKey(), selection);
+    const missing = !record;
+    const next = record ? structuredClone(record.result.segments) : blank();
+    let nextSource = record?.source_annotation || null;
+    if (record && actualSelection.startsWith('person:')) nextSource = actualSelection.slice(7);
+    if (resetHistory) {
+      segments = next;
+      source = nextSource;
+      selectedSource = sourceChoice(source);
+      sourceChoices();
+      render();
+    } else change(next, nextSource);
+    sourceChoices();
+    status(draft ? '已恢复本地草稿' : '已加载所选来源');
+    let message = record?.warning || '';
+    if (actualSelection === 'model:tempseg-sft-v1' && modelPreset) message = modelPreset.warning;
+    if (record && actualSelection !== selection) message = '所选来源暂无标注，已加载下拉框所示来源。' + message;
+    if (missing) message = '当前类型暂无可用标注，已打开空白标注。';
+    if (modelSourceWarning && actualSelection === 'model:tempseg-sft-v1') message = modelSourceWarning;
+    warn(message);
+  } catch(error) {
+    if (!segments.length) {
+      segments = blank();
+      source = null;
+      selectedSource = 'blank';
+      render();
+    }
+    sourceChoices();
+    warn('加载标注来源失败：' + error.message);
+  } finally { loading = false; updateButtons(); }
 }
 function mark() {
   if (loading || saving) return;
@@ -832,6 +1030,9 @@ function showHelp() {
   dialog.showModal();
 }
 function wire() {
+  $('select-all-segments').onclick = selectAllSegments;
+  $('merge-selected').onclick = mergeSelectedSegments;
+  $('clear-selection').onclick = clearSegmentSelection;
   $('caption-assist-generate').onclick = generateCaptionAssist;
   $('caption-assist-apply').onclick = applyCaptionAssist;
   $('caption-assist-close').onclick = closeCaptionAssist;
@@ -844,8 +1045,6 @@ function wire() {
   $('open-help').onclick = showHelp;
   $('close-help').onclick = () => $('help-dialog').close();
   $('play').onclick = togglePlay;
-  $('prev-segment').onclick = () => selectSegment(active - 1);
-  $('next-segment').onclick = () => selectSegment(active + 1);
   const player = $('player');
   const fullscreen = $('fullscreen');
   fullscreen.hidden = !document.fullscreenEnabled;
@@ -877,17 +1076,17 @@ function wire() {
   $('redo').onclick = () => restore(future,past);
   $('author').onchange = updateAuthor;
   $('author').onkeydown = event => { if (event.key === 'Enter') $('author').blur(); };
-  $('kind').onchange = () => { context(); refreshAnnotations(); };
-  $('dataset').onchange = event => switchEpisode(event.target.value);
-  for (const id of ['next-episode', 'next-episode-header']) {
-    $(id).onclick = nextEpisode;
-    $(id).disabled = !info.episodes || info.episodes.length < 2;
-  }
-  $('previous-submission').onclick = previousSubmission;
-  $('previous-submission').disabled = !info.episodes;
+  $('kind').onchange = async () => { await context(); refreshAnnotations(); refreshEpisodeStatuses(); };
+  wireEpisodeSelector();
+  $('previous-in-order').onclick = () => sequentialEpisode(-1);
+  $('next-in-order').onclick = () => sequentialEpisode(1);
+  $('previous-annotation').onclick = () => nextEpisode(-1);
+  $('next-annotation').onclick = () => nextEpisode(1);
+  updateNavigationButtons();
   $('submit').onclick = submit;
-  $('import').onclick = importSource;
-  $('blank').onclick = () => change(blank(),null);
+  $('source').onchange = () => importSource({restoreDraft:true});
+  $('import').onclick = () => importSource();
+  $('blank').onclick = () => importSource({selection:'blank'});
   $('signal-plots').closest('details').ontoggle = () => drawSignals(frame());
   $('export').onclick = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload(),null,2)], {type:'application/json'}));
@@ -917,12 +1116,34 @@ function wire() {
 }
 async function init() {
   [info,preset,submitted] = await Promise.all([api('info'),api('source'),api('annotations')]);
-  {
+  if (info.episodes) {
+    try {
+      const response = await fetch('/editor-static/flora-sft-v1.json', {cache:'no-store'});
+      if (response.status !== 404) {
+        if (!response.ok) throw Error('读取模型结果失败');
+        const data = await response.json();
+        const record = data.episodes.find(row => row.episode_index === info.episode_index);
+        if (data.source_annotation !== 'TempSeg-SFT-v1' || !record ||
+            record.source_annotation !== data.source_annotation || record.annotation_type !== 'subtask' ||
+            record.fps !== info.fps || record.frame_count !== info.frame_count ||
+            !Array.isArray(record.result?.segments) || !record.result.segments.length ||
+            record.result.segments.some(s => !Number.isInteger(s.start_frame) || !Number.isInteger(s.end_frame) ||
+              s.start_frame < 0 || s.end_frame > info.frame_count || s.start_frame >= s.end_frame ||
+              typeof s.caption !== 'string')) throw Error('模型结果与当前视频不一致');
+        modelPreset = record;
+      }
+    } catch (error) {
+      modelSourceWarning = 'SFT-v1 结果加载失败：' + error.message;
+    }
+  }
+  if (info.episodes) {
     $('episode-selector-label').textContent = 'Episode（共 ' + info.episodes.length + ' 条）';
     $('dataset').replaceChildren(...info.episodes.map(episode => new Option(
       'Episode ' + String(episode.episode_index).padStart(3,'0') + ' · ' +
       (episode.frame_count / info.fps).toFixed(1) + ' s', String(episode.episode_index))));
     $('dataset').value = String(info.episode_index);
+  } else {
+    $('dataset').value = location.port;
   }
   $('author').value = localStorage.getItem('annotation-editor-author') || '';
   const requestedKind = new URLSearchParams(location.search).get('kind');
@@ -934,7 +1155,8 @@ async function init() {
   ruler();
   wire();
   updateAuthor();
-  context();
+  await context();
+  refreshEpisodeStatuses();
   refreshReviewFlags();
   startAnnotationSync();
   requestAnimationFrame(tick);

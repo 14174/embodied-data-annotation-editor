@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Release notes: [v0.2.0 and version history](CHANGELOG.md).
+Release notes: [2026-11-19 and version history](CHANGELOG.md).
 
 Annotate multi-view robot videos in your browser. Split a recorded episode into action segments and write a caption for each one. Start from scratch or revise FLORA predictions or a saved human annotation.
 
@@ -10,13 +10,13 @@ Annotate multi-view robot videos in your browser. Split a recorded episode into 
 
 ## Annotation workflow
 
-1. **Choose an episode and annotation type.** Select Subtask or Fine action. Click **Next episode** to prefer an episode with no submitted human annotation of that type, searching forward and wrapping around; if the other episodes are all annotated, it stays on the current page and prompts you to choose manually for repeat annotation. Model labels and browser drafts do not count as submissions. Your draft and annotation type are retained when switching. To start from an existing result, choose it in the dropdown on the right and click Load.
+1. **Choose an episode, annotation type and source.** Sequential Previous/Next follows episode order. Annotation Previous/Next searches in that direction for an episode without submitted human annotations of the current type, wrapping around; if all others are annotated, it stays in place and prompts you to use sequential navigation for repeat annotation. The selected source persists across episodes and loads automatically. If unavailable, another available result is loaded and the dropdown reflects the actual source. Predictions and drafts do not count as human submissions.
 2. **Play the video and mark boundaries.** Click a camera view or press Space to play or pause. Click the annotation button or press `M` to split at the current frame. Jump between segments, or set a frame step and tap or hold `−` / `+` to move by that step. Expand the state plots to compare signals with the video.
-3. **Refine segments and captions.** Drag a shared boundary on the timeline to update both adjacent segments. Edit captions and fine-action categories in the right panel, or merge a segment with the previous one.
-4. **Save your work.** The browser saves drafts automatically. Enter an annotator name to submit, or export the annotation as JSON. Submissions are keyed by episode, annotator, and annotation type. Replacing an existing submission requires confirmation. **上一条** returns to the current annotator's most recent submission, including its annotation type; it does not mean the previous episode number.
+3. **Refine segments and captions.** Drag shared boundaries to update adjacent segments. Edit captions and fine-action categories, use Shift range selection or select-all, and merge a continuous selection with Undo support.
+4. **Save your work.** Browser drafts are saved automatically. Enter an annotator name to submit or export JSON. Submissions are keyed by episode, annotator and annotation type; replacement requires confirmation.
 5. **Flag an anomaly for human review.** Click **人工复审**, enter your name and a required note, and submit. Reports mark the whole episode as needing review across both annotation types. Each report is preserved separately; source instructions, current segment edits, and human annotation counts are unchanged. Flagged episodes are not automatically excluded from Next episode. Resolving reports is not implemented yet.
 
-The source selector shows the submitted human annotation count for the current type. It refreshes every 3 seconds while the page is visible, on return to the page, on type changes, and after submission. Refreshing only updates the count and available sources; it preserves your current edits and source selection. Next episode checks the server on every click. Episodes are not reserved: two people who opened the same episode before either submitted can still submit independently.
+The source selector shows the submitted human annotation count for the current type. It refreshes every 3 seconds while the page is visible, on return to the page, on type changes, and after submission. Refreshing only updates the count and available sources; it preserves your current edits and source selection. Annotation Previous/Next checks the server on every click. Episode option updates pause while the dropdown has focus to preserve its scroll position. Episodes are not reserved: two people who opened the same episode before either submitted can still submit independently.
 
 Click **使用说明** (Help) in the header for naming, submission and overwrite rules, annotation guidance, shortcuts, multi-user synchronization, and draft recovery. Opening the guide pauses playback without changing your annotations.
 
@@ -165,12 +165,13 @@ Human submissions are written to the output directory passed at startup, for exa
 
 Anomaly reports are separate sidecars at `annotations/episode_000000/review_flags/<report-id>.json`, with `status`, `annotator`, `annotation_type`, `note`, `created_at`, and a server-read snapshot of the original instruction.
 
+## Optional SFT predictions
+
+Place deployment-specific predictions in `static/flora-sft-v1.json` to add the TempSeg-SFT-v1 source for Subtask. This optional file is excluded from Git. Without it, other annotation functions remain available. Each record must match its episode's frame count and fps; intervals use `[start_frame, end_frame)`. See the [Chinese example](README.zh-CN.md#可选的-sft-预标注) for the JSON structure.
+
 ## Tests
 
 ```sh
 python -m unittest discover -s tests
-node tests/segments.test.mjs
-node tests/annotations.test.mjs
-node tests/review.test.mjs
-node tests/caption_assist.test.mjs
+node --test tests/*.test.mjs
 ```

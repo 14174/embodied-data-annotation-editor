@@ -12,12 +12,28 @@ TYPES = {'subtask', 'fine_action'}
 WRITE_LOCK = Lock()
 
 
-def next_episode(root, indexes, current, kind):
-    """Prefer another episode without a submitted annotation of this type."""
+def episode_statuses(root, indexes, kind):
+    """Read lightweight per-episode status without loading caption contents."""
     if kind not in TYPES:
         raise ValueError('标注类型无效')
-    indexes = sorted(indexes)
-    ordered = [i for i in indexes if i > current] + [i for i in indexes if i < current]
+    result = []
+    for index in sorted(indexes):
+        directory = root / f'episode_{index:06d}'
+        count = sum(path.is_file() for path in (directory / kind).glob('*.json'))
+        flagged = any(path.is_file() for path in (directory / 'review_flags').glob('*.json'))
+        result.append({'episode_index': index, 'human_count': count, 'needs_review': flagged})
+    return result
+
+
+def next_episode(root, indexes, current, kind, direction=1):
+    """Find an unannotated episode in the requested direction, wrapping once."""
+    if kind not in TYPES:
+        raise ValueError('标注类型无效')
+    if direction not in (-1, 1):
+        raise ValueError('跳转方向无效')
+    indexes = sorted(indexes, reverse=direction < 0)
+    ordered = ([i for i in indexes if (i - current) * direction > 0] +
+               [i for i in indexes if (i - current) * direction < 0])
     for index in ordered:
         directory = root / f'episode_{index:06d}' / kind
         if not any(path.is_file() for path in directory.glob('*.json')):

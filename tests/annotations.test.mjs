@@ -30,7 +30,7 @@ function page() {
     fetch:async()=>{ if(fail) throw Error('offline');return {ok:true,json:async()=>structuredClone(records)}; },
   });
   vm.runInContext(source, context);
-  vm.runInContext("info={dataset_name:'test',episode_index:0,episodes:[{},{}]};preset={result:{segments:[{}]}};submitted=[];segments=[{start_frame:0,end_frame:10,caption:'未提交编辑'}];source='FLORA';",context);
+  vm.runInContext("info={dataset_name:'test',episode_index:0,episodes:[{},{}]};preset={result:{segments:[{}]}};submitted=[];segments=[{start_frame:0,end_frame:10,caption:'未提交编辑'}];source='FLORA';selectedSource='flora';",context);
   return {context,node,window,document,location,
     records(value){records=value;}, offline(){fail=true;}, poll(){return interval();}};
 }
@@ -42,6 +42,7 @@ p.records([record('甲'),record('乙','fine_action')]);
 await vm.runInContext('refreshAnnotations()',p.context);
 assert.equal(p.node('human-annotation-count').textContent,'人工标注：1 份');
 p.node('source').value='person:甲';
+vm.runInContext("selectedSource='person:甲';source='甲'",p.context);
 const original=vm.runInContext('JSON.stringify({segments,source})',p.context);
 p.records([record('甲'),record('丙'),record('乙','fine_action')]);
 await vm.runInContext('refreshAnnotations()',p.context);

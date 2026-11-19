@@ -19,3 +19,15 @@ export function mergeAt(segments,index) {
   const caption=[...new Set([a.caption,b.caption].filter(Boolean))].join('\n');
   return [...segments.slice(0,index-1),{...a,end_frame:b.end_frame,caption,category:a.category===b.category?a.category:''},...segments.slice(index+1)];
 }
+export function mergeSelected(segments, indices) {
+  const selected = [...new Set(indices)].sort((a,b) => a-b);
+  if (selected.length < 2 || selected.some((index,i) => !Number.isInteger(index) ||
+      index < 0 || index >= segments.length || (i && index !== selected[i-1]+1))) return segments;
+  const first = selected[0], last = selected[selected.length-1];
+  const group = segments.slice(first,last+1);
+  if (group.some((segment,i) => i && group[i-1].end_frame !== segment.start_frame)) return segments;
+  const caption = [...new Set(group.map(s => s.caption).filter(Boolean))].join('\n');
+  const category = group.every(s => s.category === group[0].category) ? group[0].category : '';
+  return [...segments.slice(0,first), {...group[0],end_frame:group[group.length-1].end_frame,caption,category},
+    ...segments.slice(last+1)];
+}

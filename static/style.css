@@ -154,3 +154,28 @@
 .card-head .caption-assist-button + button { margin-left: 0; }
 .caption-assist-footer { flex-shrink: 0; padding: 12px 22px 8px; border-top: 1px solid var(--border); }
 .caption-assist-footer .help-note { margin-bottom: 0; }
+
+.batch-toolbar { display: flex; flex-shrink: 0; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px; font-size: 12px; color: var(--muted); }
+.batch-toolbar button { font-size: 12px; min-height: 28px; padding: 3px 7px; }
+#batch-selection-status { margin-right: auto; }
+.segment-card.selected { box-shadow: inset 0 0 0 1px #8bc9f2; background: #172a40; }
+.card-head .segment-selection { min-height: 0; margin: 0; accent-color: var(--cyan); cursor: pointer; width: 15px; height: 15px; }
+
+/* Let the playback row follow the camera aspect ratios without cropping. */
+#views { aspect-ratio: auto; min-height: 0; max-height: none; align-items: stretch; }
+#views .view { flex: var(--camera-ratio, 1.333333) 1 0; }
+#views .view video { display: block; width: 100%; height: auto; flex: 0 0 auto; aspect-ratio: var(--camera-ratio, 1.333333); object-fit: contain; }
+#views .view-label { flex-shrink: 0; }
+#player:fullscreen #views .view video { flex: 1 1 0; min-height: 0; height: 0; aspect-ratio: auto; }
+.card-head .segment-selection { width: 24px; height: 24px; flex-shrink: 0; }
+header { gap: 12px; flex-wrap: wrap; }
+.header-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+@media (min-width: 1051px) {
+  /* Reserve room for controls and the segment timeline; shrink the whole video column. */
+  #workspace {
+    --camera-height-limit: clamp(140px, calc(100dvh - 560px), 340px);
+    grid-template-columns: minmax(0, min(64%, calc(var(--camera-total-ratio, 4) * var(--camera-height-limit)))) minmax(340px, 1fr);
+  }
+  .caption-preview { min-height: 44px; max-height: 66px; }
+}
