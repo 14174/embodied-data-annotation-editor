@@ -1,5 +1,7 @@
 # Embodied Data Annotation Editor
 
+H100 deployment, TempSeg inference and audited model-result import: [reusable workflow (Chinese)](docs/tempseg-workflow.zh-CN.md). Use `./h100ctl open --browser` from the client machine, or `./annotationctl --help` on H100.
+
 **English** | [简体中文](README.zh-CN.md)
 
 Release notes: [2026-11-19 and version history](CHANGELOG.md).

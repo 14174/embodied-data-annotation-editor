@@ -1,6 +1,7 @@
 """Serve the full v3 dataset with a separate writable annotation root."""
 import argparse
 import json
+import os
 from threading import RLock
 from urllib.parse import parse_qs, urlencode
 from pathlib import Path
@@ -192,9 +193,15 @@ def create_dataset_app(root, output, dataset=None, dataset_id="default"):
     return app
 
 
-def create_app(root, output):
+def create_app(root, output, *, collection_root=None, review_root=None):
     """Resolve each request against its dataset; never switch shared global state."""
-    catalog = DatasetCatalog(root, output)
+    collection_root = collection_root or os.environ.get('ANNOTATION_COLLECTION_ROOT')
+    review_root = review_root or os.environ.get('ANNOTATION_REVIEW_ROOT')
+    if collection_root:
+        from fixed_collection import FixedDatasetCatalog
+        catalog = FixedDatasetCatalog(root,output,collection_root,review_root)
+    else:
+        catalog = DatasetCatalog(root, output)
     app = FastAPI(title='Robot annotation editor')
     app.state.catalog = catalog
     applications, app_lock = {}, RLock()
@@ -264,12 +271,15 @@ def create_app(root, output):
                 if path in ('/editor-api/vocabulary','/editor-api/model-preset'):
                     name='caption-vocabulary.json' if path.endswith('vocabulary') else 'flora-sft-v1.json'
                     file=reader.root/name
+                    if path.endswith('model-preset') and (reader.root/'model-preannotations.json').is_file():
+                        file=reader.root/'model-preannotations.json'
                     if not file.is_file() and key==catalog.default_id: file=static/name
                     data=json.loads(file.read_text()) if file.is_file() else None
                     return await JSONResponse(data,headers={'Cache-Control':'no-store'})(scope,receive,send)
                 with app_lock:
-                    if key not in applications:
+                    if key not in applications or applications[key].state.dataset_reader is not reader:
                         applications[key]=create_dataset_app(reader.root,labels,reader,key)
+                        applications[key].state.dataset_reader=reader
                     target=applications[key]
             except (ValueError,OSError,KeyError,TypeError) as error:
                 return await JSONResponse({'detail':str(error)},status_code=404)(scope,receive,send)

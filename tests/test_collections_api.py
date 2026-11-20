@@ -41,6 +41,36 @@ class CollectionApiTests(unittest.TestCase):
         response=self.client.get('/editor-api/collections')
         self.assertEqual(response.status_code,200,response.text)
         self.assertEqual(response.json()['default_dataset_id'],'default')
+    def test_fixed_collection_detects_uploads_and_reloads_changed_episode_readers(self):
+        from full_server import create_app
+        from fastapi.testclient import TestClient
+        fixed=self.base/'uploads';fixed.mkdir()
+        app=create_app(self.base/'legacy',self.base/'fixed-human',collection_root=fixed)
+        app.state.catalog.scan_interval=0
+        client=TestClient(app)
+        self.assertEqual(client.get('/editor-api/collections').json()['collections'][0]['datasets'],[])
+        source=fixed/'20261120_120000';self.make(source)
+        catalog=client.get('/editor-api/collections').json()
+        item=catalog['collections'][0]['datasets'][0]
+        self.assertTrue(item['available'])
+        self.assertEqual(client.get('/editor-api/info',params={'dataset':item['id']}).status_code,200)
+        path=source/'meta/episodes/index.parquet'
+        table=self.pd.read_parquet(path)
+        extra=table.iloc[0].to_dict();extra['episode_index']=3
+        self.pd.concat([table,self.pd.DataFrame([extra])],ignore_index=True).to_parquet(path)
+        updated=client.get('/editor-api/collections').json()['collections'][0]['datasets'][0]
+        self.assertEqual(updated['episode_count'],2)
+        response=client.get('/editor-api/info',params={'dataset':item['id'],'episode':3})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['episode_index'],3)
+        response=client.post('/editor-api/collections/scan',json={'path':str(self.base/'laundry')})
+        self.assertEqual(response.status_code,422)
+        pending=fixed/'20261120_130000';(pending/'meta').mkdir(parents=True)
+        (pending/'meta/info.json').write_text(json.dumps({'fps':30,'total_episodes':100,'features':{'image':{'dtype':'image'}}}))
+        items=client.get('/editor-api/collections').json()['collections'][0]['datasets']
+        row=next(r for r in items if r['name']==pending.name)
+        self.assertFalse(row['available']);self.assertEqual(row['episode_count'],100)
+        self.assertIn('Parquet',row['reason'])
     def test_request_context_and_submissions_are_isolated(self):
         collection=self.register();ids=[row['id'] for row in collection['datasets']]
         payload={'dataset_id':ids[0],'episode_index':0,'annotation_type':'subtask','annotator':'tester',

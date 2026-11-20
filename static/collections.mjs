@@ -35,7 +35,7 @@ export async function mountCollections({info,api,beforeLeave,getKind,isBusy}) {
   function showDates() {
     const collection=currentCollection();
     const options=(collection?.datasets||[]).map(row=>{
-      const label=row.name+' · '+(row.available ? row.episode_count+' 条 · 已标 '+row.annotated_count+' 条' : '不可用：'+row.reason)+(row.archived?' · 只读':'');
+      const label=row.name+' · '+(row.available ? row.episode_count+' 条 · 已标 '+row.annotated_count+' 条' : (row.episode_count?row.episode_count+' 条 · ':'')+(row.status==='needs_preparation'?'待准备：':'不可用：')+row.reason)+(row.archived?' · 只读':'');
       const option=new Option(label,row.id);option.disabled=!row.available;return option;
     });
     if (!collection?.datasets.some(row=>row.id===info.dataset_id)) options.unshift(new Option('请选择日期数据集',''));
@@ -48,6 +48,11 @@ export async function mountCollections({info,api,beforeLeave,getKind,isBusy}) {
   }
   async function reload(preferredCollection) {
     catalog=await api('collections?'+new URLSearchParams({kind:getKind()}));
+    $('collection-add').hidden=!!catalog.fixed_root;
+    $('collection-select').disabled=!!catalog.fixed_root;
+    $('collection-root').textContent=catalog.fixed_root ? '目录：'+catalog.fixed_root+' · 自动扫描' : '';
+    $('collection-path').readOnly=!!catalog.fixed_root;
+    if (catalog.fixed_root) $('collection-path').value=catalog.fixed_root;
     $('collection-select').replaceChildren(...catalog.collections.map(c=>new Option(c.name,c.id)));
     const current=catalog.collections.find(c=>c.datasets.some(row=>row.id===info.dataset_id));
     $('collection-select').value=preferredCollection||current?.id||catalog.collections[0]?.id||'';
@@ -105,5 +110,17 @@ export async function mountCollections({info,api,beforeLeave,getKind,isBusy}) {
     feedback(item.archived?'已取消归档。':'已归档，仅可查看和导出；已有标注保留。');
   });
   await reload();buttons();showDates();
+  if (catalog.fixed_root && typeof window !== 'undefined') {
+    let refreshing=false;
+    const timer=window.setInterval(async()=>{
+      if (refreshing||document.hidden||busy||isBusy()||$('collection-dialog').open||
+          document.activeElement===$('date-select')||document.activeElement===$('collection-select')) return;
+      refreshing=true;
+      try {await reload($('collection-select').value);}
+      catch {feedback('自动扫描暂不可用，已保留当前列表与草稿。');}
+      finally {refreshing=false;}
+    },Math.max(5000,(catalog.scan_interval_seconds||30)*1000));
+    window.addEventListener('pagehide',()=>window.clearInterval(timer),{once:true});
+  }
   return {refresh:()=>reload($('collection-select').value)};
 }

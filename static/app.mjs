@@ -1,6 +1,6 @@
 import { splitAt, moveBoundary, mergeAt, mergeSelected } from './segments.mjs?v=19';
 import {validateVocabulary} from './caption-vocabulary.mjs?v=1';
-import {migrateLegacyWorkspace, mountCollections} from './collections.mjs?v=1';
+import {migrateLegacyWorkspace, mountCollections} from './collections.mjs?v=2';
 
 const $ = id => document.getElementById(id);
 const colors = ['#5a95d4', '#5eaf94', '#9e89db', '#d18c77', '#baa265'];
@@ -48,8 +48,31 @@ const blank = () => [{start_frame:0, end_frame:info.frame_count, caption:'', cat
 const snapshot = () => ({segments:structuredClone(segments), source, selectedSource});
 function sourceChoice(value) {
   if (value === 'FLORA') return 'flora';
-  if (value === 'TempSeg-SFT-v1') return 'model:tempseg-sft-v1';
+  if (/^TempSeg-SFT-v\d+(?:-epoch\d+)?$/.test(value)) return 'model:' + value.toLowerCase();
   return value ? 'person:' + value : 'blank';
+}
+const modelChoice = () => sourceChoice(modelPreset?.source_annotation || 'TempSeg-SFT-v1');
+function modelRecord(data) {
+  if (data === null) return null;
+  if (!/^TempSeg-SFT-v\d+(?:-epoch\d+)?$/.test(data?.source_annotation) || !Array.isArray(data.episodes))
+    throw Error('模型来源或结果格式无效');
+  const matches = data.episodes.filter(row => row.episode_index === info.episode_index);
+  if (!matches.length) return null; // Partial inference bundles need no preset for other episodes.
+  const record = matches[0];
+  if (matches.length !== 1 || record.source_annotation !== data.source_annotation ||
+      record.annotation_type !== 'subtask' || record.fps !== info.fps || record.frame_count !== info.frame_count ||
+      !Array.isArray(record.result?.segments) || !record.result.segments.length)
+    throw Error('模型结果与当前视频不一致');
+  let end = 0;
+  for (const s of record.result.segments) {
+    if (!Number.isInteger(s.start_frame) || !Number.isInteger(s.end_frame) ||
+        s.start_frame !== end || s.end_frame > info.frame_count || s.start_frame >= s.end_frame ||
+        typeof s.caption !== 'string' || (s.category !== undefined && typeof s.category !== 'string'))
+      throw Error('模型分段存在空隙、重叠或无效边界');
+    end = s.end_frame;
+  }
+  if (end !== info.frame_count) throw Error('模型分段未覆盖视频末尾');
+  return record;
 }
 function previousDraft() {
   for (const key of [previousDraftKey(), legacyDraftKey(author), legacyDraftKey('')]) {
@@ -670,7 +693,7 @@ function sourceChoices() {
   $('annotation-stats').textContent = kind + ' · ' + humanAnnotationCount + ' 份已提交';
   const select = $('source');
   const options = [...(kind === 'subtask' && preset.result.segments.length ? [new Option('FLORA 预标注','flora')] : []),
-    ...(kind === 'subtask' && modelPreset ? [new Option('TempSeg-SFT-v1 推理结果','model:tempseg-sft-v1')] : []),
+    ...(kind === 'subtask' && modelPreset ? [new Option(modelPreset.source_annotation + ' 推理结果',modelChoice())] : []),
     ...records.map(r => new Option(r.annotator + ' 的标注', 'person:' + r.annotator)),
     new Option('从零标注','blank')];
   if (!options.some(option => option.value === selectedSource)) {
@@ -855,7 +878,8 @@ async function context() {
   kind = $('kind').value;
   renderEpisodeChoices();
   warn();
-  let selection = kind === 'subtask' && preset.result.segments.length ? 'flora' : 'blank';
+  let selection = kind === 'subtask' && preset.result.segments.length ? 'flora'
+    : kind === 'subtask' && modelPreset ? modelChoice() : 'blank';
   try {
     const preferred = localStorage.getItem(sourcePreferenceKey());
     const old = previousDraft();
@@ -932,7 +956,7 @@ async function importSource({selection = $('source').value, restoreDraft = false
   updateButtons();
   try {
     const alternatives = submitted.filter(row => row.annotation_type === kind).map(row => 'person:' + row.annotator);
-    if (kind === 'subtask') alternatives.push('flora', 'model:tempseg-sft-v1');
+    if (kind === 'subtask') alternatives.push('flora', modelChoice());
     const candidates = selection === 'blank' ? ['blank'] : [...new Set([selection, ...alternatives])];
     let draft = null, record = null, actualSelection = selection;
     for (const candidate of candidates) {
@@ -941,7 +965,7 @@ async function importSource({selection = $('source').value, restoreDraft = false
       if (!record) {
         if (candidate === 'blank') record = {result:{segments:blank()}, source_annotation:null};
         else if (candidate === 'flora') record = kind === 'subtask' ? preset : null;
-        else if (candidate === 'model:tempseg-sft-v1') record = kind === 'subtask' ? modelPreset : null;
+        else if (candidate.startsWith('model:tempseg-sft-')) record = kind === 'subtask' && candidate === modelChoice() ? modelPreset : null;
         else if (candidate.startsWith('person:')) record = await api('annotation?' + new URLSearchParams({author:candidate.slice(7),kind}));
         else throw Error('标注来源无效');
       }
@@ -966,10 +990,10 @@ async function importSource({selection = $('source').value, restoreDraft = false
     sourceChoices();
     status(draft ? '已恢复本地草稿' : '已加载所选来源');
     let message = record?.warning || '';
-    if (actualSelection === 'model:tempseg-sft-v1' && modelPreset) message = modelPreset.warning;
+    if (actualSelection === modelChoice() && modelPreset) message = modelPreset.warning;
     if (record && actualSelection !== selection) message = '所选来源暂无标注，已加载下拉框所示来源。' + message;
     if (missing) message = '当前类型暂无可用标注，已打开空白标注。';
-    if (modelSourceWarning && actualSelection === 'model:tempseg-sft-v1') message = modelSourceWarning;
+    if (modelSourceWarning && actualSelection === modelChoice()) message = modelSourceWarning;
     warn(message);
   } catch(error) {
     if (!segments.length) {
@@ -1234,19 +1258,10 @@ async function init() {
       if (response.status !== 404) {
         if (!response.ok) throw Error('读取模型结果失败');
         const data = await response.json();
-        const record = data?.episodes?.find(row => row.episode_index === info.episode_index);
-        if (data === null) { /* No model preset for this dataset. */ }
-        else if (data.source_annotation !== 'TempSeg-SFT-v1' || !record ||
-            record.source_annotation !== data.source_annotation || record.annotation_type !== 'subtask' ||
-            record.fps !== info.fps || record.frame_count !== info.frame_count ||
-            !Array.isArray(record.result?.segments) || !record.result.segments.length ||
-            record.result.segments.some(s => !Number.isInteger(s.start_frame) || !Number.isInteger(s.end_frame) ||
-              s.start_frame < 0 || s.end_frame > info.frame_count || s.start_frame >= s.end_frame ||
-              typeof s.caption !== 'string')) throw Error('模型结果与当前视频不一致');
-        modelPreset = record || null;
+        modelPreset = modelRecord(data);
       }
     } catch (error) {
-      modelSourceWarning = 'SFT-v1 结果加载失败：' + error.message;
+      modelSourceWarning = 'TempSeg 结果加载失败：' + error.message;
     }
   }
   if (info.episodes) {

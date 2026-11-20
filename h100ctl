@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Run annotationctl over SSH; open also starts the platform and local browser access."""
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+from urllib.request import ProxyHandler, build_opener
+import json
+import argparse
+import time
+
+
+def main():
+    host = os.environ.get('ANNOTATION_SSH_HOST','h100')
+    root = os.environ.get('ANNOTATION_REMOTE_ROOT','/home/zhiwen/workspace/embodied-data-annotation-editor')
+    ssh = ['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',host]
+    remote = lambda args: [*ssh,shlex.join([root+'/annotationctl',*args])]
+    if sys.argv[1:2] != ['open']:
+        if len(sys.argv) == 1:
+            print('Usage: ./h100ctl open [--port 18080] [--browser] | platform ... | model ... | prepare ... | import ...')
+            return
+        os.execvp('ssh',remote(sys.argv[1:]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('open')
+    parser.add_argument('--port',type=int,default=18080)
+    parser.add_argument('--remote-port',type=int,default=18080)
+    parser.add_argument('--browser',action='store_true')
+    args = parser.parse_args()
+    subprocess.run(remote(['platform','start']),check=True)
+    http = build_opener(ProxyHandler({}))
+    url = f'http://127.0.0.1:{args.port}'
+    try:
+        with http.open(url+'/api/health',timeout=3) as response:
+            if not json.load(response).get('ok'):
+                raise RuntimeError('该本地端口不是标注平台')
+    except OSError:
+        subprocess.run(['ssh','-f','-N','-T','-o','BatchMode=yes','-o','ConnectTimeout=10',
+            '-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=30','-o','ServerAliveCountMax=3',
+            '-L',f'127.0.0.1:{args.port}:127.0.0.1:{args.remote_port}',host],check=True)
+    for attempt in range(30):
+        try:
+            with http.open(url+'/api/health',timeout=3) as response:
+                if json.load(response).get('ok'):
+                    break
+        except OSError:
+            pass
+        time.sleep(1)
+    else:
+        raise RuntimeError('平台或 SSH 转发尚未就绪，请检查 platform status/logs 和 SSH 转发策略')
+    print(url+'/editor',flush=True)
+    if args.browser:
+        subprocess.Popen(['xdg-open',url+'/editor'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError,ValueError,RuntimeError,subprocess.CalledProcessError) as error:
+        print(f'Error: {error}',file=sys.stderr)
+        sys.exit(1)
