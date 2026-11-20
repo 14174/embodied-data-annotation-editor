@@ -4,16 +4,30 @@ H100 deployment, TempSeg inference and audited model-result import: [reusable wo
 
 **English** | [简体中文](README.zh-CN.md)
 
-Release notes: [2026-11-19 and version history](CHANGELOG.md).
+Release notes: [2026-11-20 and version history](CHANGELOG.md).
 
 Annotate multi-view robot videos in your browser. Split a recorded episode into action segments and write a caption for each one. Start from scratch or revise FLORA predictions or a saved human annotation.
 
 ![Annotation editor with three synchronized camera views, editable segment captions, and a timeline with draggable boundaries.](docs/images/editor-screenshot.png)
 
+## Quick Start
+
+Requires Git, Python 3.10+, and an existing indexed dataset with independent episode videos (format below). Manual annotation needs no GPU or model credentials.
+
+```bash
+git clone https://github.com/14174/embodied-data-annotation-editor.git
+cd embodied-data-annotation-editor
+./deploy.sh /absolute/path/to/dataset "$PWD/annotations" --port 18080
+```
+
+The script creates/reuses `.venv`, installs requirements and runs the server in the foreground. Open [http://127.0.0.1:18080/editor](http://127.0.0.1:18080/editor); stop with Ctrl+C. Add `--service` to install and restart a Linux systemd user service, or `--collection-root /path/to/collection` to discover its immediate dataset folders. Keep the output directory outside datasets and scanned collections. The script does not convert raw videos or embedded images.
+
+For a remote server, run `ssh -N -L 18080:127.0.0.1:18080 user@server` on your computer and open the same localhost URL. See the [Chinese Quick Start](README.zh-CN.md#quick-start一键部署) for service management, updates and prerequisites, and the [optional preparation/inference workflow](docs/tempseg-workflow.zh-CN.md) for raw data and TempSeg integration.
+
 ## Annotation workflow
 
 1. **Choose an episode, annotation type and source.** Sequential Previous/Next follows episode order. Annotation Previous/Next searches in that direction for an episode without submitted human annotations of the current type, wrapping around; if all others are annotated, it stays in place and prompts you to use sequential navigation for repeat annotation. The selected source persists across episodes and loads automatically. If unavailable, another available result is loaded and the dropdown reflects the actual source. Predictions and drafts do not count as human submissions.
-2. **Play the video and mark boundaries.** Click a camera view or press Space to play or pause. Click the annotation button or press `M` to split at the current frame. Jump between segments, or set a frame step and tap or hold `−` / `+` to move by that step. Expand the state plots to compare signals with the video.
+2. **Play the video and mark boundaries.** Click a camera view or press Space to play or pause. Click the annotation button or press `M` to split at the current frame. Frame stepping defaults to 10 frames: tap or hold `−` / `+`, or use the arrow keys, while retaining the current playing or paused state. Click or drag the bottom segment track, ruler or enlarged playhead to seek precisely; click a caption card to jump to its start. Expand the state plots to compare signals with the video.
 3. **Refine segments and captions.** Drag shared boundaries to update adjacent segments. Edit captions and fine-action categories, use Shift range selection or select-all, and merge a continuous selection with Undo support.
 4. **Save your work.** Browser drafts are saved automatically. Enter an annotator name to submit or export JSON. Submissions are keyed by episode, annotator and annotation type; replacement requires confirmation.
 5. **Flag an anomaly for human review.** Click **人工复审**, enter your name and a required note, and submit. Reports mark the whole episode as needing review across both annotation types. Each report is preserved separately; source instructions, current segment edits, and human annotation counts are unchanged. Flagged episodes are not automatically excluded from Next episode. Resolving reports is not implemented yet.
@@ -24,21 +38,21 @@ Click **使用说明** (Help) in the header for naming, submission and overwrite
 
 ## Collections and date datasets
 
-Keep the existing startup command. Add a server-side collection directory using the toolbar, scan its immediate date folders, select available dates and confirm. Switch using Collection → Date dataset → Episode. Current drafts are saved before navigation, and each dataset remembers its last episode.
+Keep the existing startup command. Add a server-side collection directory using the toolbar, scan its immediate date folders, select available dates and confirm. Switch using Collection → Date dataset → Episode. Collection options and the path line show absolute server paths. Previously registered collections and the original dataset remain selectable even when an automatic scan root is configured. Current drafts are saved before navigation, and each dataset remembers its last episode.
 
 Dates may contain the indexed layout described below, or numbered `episode_XXXXXX` directories, each with its own `meta/info.json` and exactly one indexed episode. Such episode folders must use the same fps. Bare video folders without metadata are shown as unavailable. Source data stays read-only.
 
 Refresh discovers additional dates without navigating away and retains offline entries. Dataset progress counts episodes with human submissions of the current type. Archive makes a dataset read-only on the server; unarchive restores submission access.
 
-Registrations persist in `OUTPUT/.dataset-collections.json`; new labels live under `OUTPUT/collections/<collection-id>/<date>/episode_XXXXXX/`. Existing default labels keep their original paths. Stable dataset IDs isolate drafts, source preferences, vocabularies, requests and last-episode positions. Old default browser workspaces migrate once.
+Registrations persist in `OUTPUT/.dataset-collections.json`; new labels live under `OUTPUT/collections/<collection-id>/<date>/episode_XXXXXX/`. Existing default labels keep their original paths. Stable dataset IDs isolate drafts, source preferences, requests and last-episode positions. Vocabulary selection is global within the current browser. Old default browser workspaces migrate once.
 
-Each date root may provide `caption-vocabulary.json` and `flora-sft-v1.json`. Without them, free text remains available and that model source is absent. The default dataset keeps the existing static-file fallback.
+Each date root may provide `flora-sft-v1.json`; without it, that model source is absent. All datasets use `static/caption-vocabulary.json` as the shared server default instead of reading a date-specific vocabulary.
 
 ## Caption vocabulary and free text
 
 Subtask cards offer a standard-caption dropdown alongside the editable text field. The default vocabulary contains eight washing/drying instructions. Selecting an item inserts its exact English caption, supports Undo, and leaves boundaries unchanged. Modified captions are marked as custom unless they exactly match a vocabulary item. Repeated choices are allowed.
 
-Import a JSON vocabulary or restore the default using the toolbar. Imports persist per dataset in the current browser across episodes; they do not update other browsers or rewrite existing annotations. Fine action stays free text. See [the default JSON](static/caption-vocabulary.json) for the file format: string `id`, `name`, `version`, and nonempty `items` containing unique string `id` and `caption`, with optional `label_zh`. Files are limited to 1 MB. To update the team default, replace the deployed JSON; users with personal imports can click Restore default. Annotation JSON retains the existing caption field.
+Import a JSON vocabulary or restore the default using the toolbar. Imports persist globally in the current browser across datasets and episodes; restoring the default also applies globally. Other browsers and machines load the same server default, while personal imports are not synchronized. Existing annotations remain unchanged. Fine action stays free text. See [the default JSON](static/caption-vocabulary.json) for the file format: string `id`, `name`, `version`, and nonempty `items` containing unique string `id` and `caption`, with optional `label_zh`. Files are limited to 1 MB. To update the team default, replace the deployed JSON; users with personal imports can click Restore default. Annotation JSON retains the existing caption field.
 
 ## Caption assistance (optional)
 

@@ -32,12 +32,18 @@ globalThis.document={getElementById(id){
    replaceChildren(...children){this.children=children;this.value=children[0]?.value||'';}});
  return nodes.get(id);
 }};
-const data={collections:[{id:'legacy',name:'原有',datasets:[{id:'default',name:'旧数据',available:true,episode_count:1,first_episode:0}]},
- {id:'single',name:'单日期合集',datasets:[{id:'single:2026-11-18',name:'2026-11-18',available:true,episode_count:1,first_episode:0}]}]};
+const data={collections:[{id:'legacy',name:'原有',root:'/data/original',datasets:[{id:'default',name:'旧数据',available:true,episode_count:1,first_episode:0}]},
+ {id:'single',name:'单日期合集',root:'/data/laundry',datasets:[{id:'single:2026-11-18',name:'2026-11-18',available:true,episode_count:1,first_episode:0}]}]};
 await module.mountCollections({info:{dataset_id:'default'},api:async()=>data,beforeLeave:()=>true,getKind:()=> 'subtask',isBusy:()=>false});
+assert.match(nodes.get('collection-root').textContent,/\/data\/original/);
+assert.match(nodes.get('collection-select').children[1].text,/\/data\/laundry/);
 nodes.get('collection-select').value='single';nodes.get('collection-select').onchange();
+assert.match(nodes.get('collection-root').textContent,/\/data\/laundry/);
 assert.equal(nodes.get('date-select').value,'','Single-date collections must await an explicit date choice');
 assert.ok(nodes.get('date-select').children.some(option=>option.value==='single:2026-11-18'));
+nodes.get('collection-select').value='legacy';nodes.get('collection-select').onchange();
+assert.match(nodes.get('collection-root').textContent,/\/data\/original/);
+assert.equal(nodes.get('date-select').value,'default');
 delete globalThis.document;delete globalThis.Option;
 
 saved.set(JSON.stringify(['annotation-editor-position','stale']),JSON.stringify({episode:99}));

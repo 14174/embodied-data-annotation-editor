@@ -89,7 +89,7 @@ class CollectionApiTests(unittest.TestCase):
         self.assertEqual(self.client.get('/editor-api/video',params={'dataset':ids[0],'episode':3,'camera':'scene'}).content,b'fixture-video')
         self.assertEqual(self.client.get('/editor-api/info',params={'dataset':'unknown'}).status_code,404)
         self.assertEqual(self.client.get('/editor-api/info',params={'dataset':ids[1],'episode':3}).status_code,404)
-    def test_legacy_output_and_preset_are_preserved_and_custom_vocab_is_per_date(self):
+    def test_legacy_output_and_preset_are_preserved_and_default_vocab_is_global(self):
         collection=self.register();first,second=[row['id'] for row in collection['datasets']]
         legacy=self.client.get('/editor-api/info').json()
         self.assertEqual(legacy['dataset_id'],'default');self.assertEqual(legacy['legacy_dataset_name'],'legacy')
@@ -99,8 +99,10 @@ class CollectionApiTests(unittest.TestCase):
         self.assertEqual(len(list((self.base/'human/episode_000000/subtask').glob('*.json'))),1)
         vocab={'id':'date-vocab','name':'专用','version':'1','items':[{'id':'open','caption':'Open washer'}]}
         (self.base/'laundry/2026-11-18/caption-vocabulary.json').write_text(json.dumps(vocab))
-        self.assertEqual(self.client.get('/editor-api/vocabulary',params={'dataset':first}).json()['id'],'date-vocab')
-        self.assertIsNone(self.client.get('/editor-api/vocabulary',params={'dataset':second}).json())
+        default=self.client.get('/editor-api/vocabulary').json()
+        self.assertTrue(default['items'])
+        self.assertEqual(self.client.get('/editor-api/vocabulary',params={'dataset':first}).json(),default)
+        self.assertEqual(self.client.get('/editor-api/vocabulary',params={'dataset':second}).json(),default)
         self.assertIsNone(self.client.get('/editor-api/model-preset',params={'dataset':first}).json())
         rows=self.client.get('/editor-api/collections',params={'kind':'subtask'}).json()['collections']
         self.assertEqual(rows[0]['datasets'][0]['annotated_count'],1)

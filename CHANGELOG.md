@@ -1,5 +1,15 @@
 # Version history / 版本记录
 
+## 2026-11-20 · Player controls and collection paths / 播放与合集路径
+
+- Add `deploy.sh` for environment setup and foreground startup, with optional Linux user-service installation; document Quick Start, collection scanning, SSH access and upgrades.
+- Show absolute collection paths and retain previously registered collection choices in fixed-root mode, preserving dataset IDs, output directories and dataset-scoped episode navigation.
+- Default to 10-frame stepping; retain playing or paused state for buttons, holds and keyboard navigation. Crossing a segment updates the loop target.
+- Seek by clicking or dragging the segment track, ruler or enlarged playhead. Shared boundary handles continue to edit adjacent segments; seeking preserves annotations.
+- Share vocabulary choice across datasets and episodes within a browser, migrate legacy imports once, and use a single server default for all datasets.
+- Update vocabulary caption selections in place so the caption list retains its scroll position and focused control, with draft saving and Undo/Redo preserved.
+- 本地验证：17 项 JavaScript 测试、47 项 Python 测试通过；合成三视角视频的真实 Chrome 检查覆盖跳帧、长按、循环跨段、游标拖动、时间轴缩放滚动和边界编辑／撤销。
+
 ## 2026-11-19 · Dataset collections / 多合集与日期切换
 
 - Add server-directory scanning, date previews and confirmation, refresh, per-type progress and read-only archiving.

@@ -270,7 +270,7 @@ def create_app(root, output, *, collection_root=None, review_root=None):
                     return await JSONResponse({'detail':'该数据集已归档，只能查看和导出'},status_code=403)(scope,receive,send)
                 if path in ('/editor-api/vocabulary','/editor-api/model-preset'):
                     name='caption-vocabulary.json' if path.endswith('vocabulary') else 'flora-sft-v1.json'
-                    file=reader.root/name
+                    file=static/name if path.endswith('vocabulary') else reader.root/name
                     if path.endswith('model-preset') and (reader.root/'model-preannotations.json').is_file():
                         file=reader.root/'model-preannotations.json'
                     if not file.is_file() and key==catalog.default_id: file=static/name

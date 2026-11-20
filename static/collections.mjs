@@ -34,6 +34,8 @@ export async function mountCollections({info,api,beforeLeave,getKind,isBusy}) {
   function currentCollection() {return catalog?.collections.find(c=>c.id===$('collection-select').value);}
   function showDates() {
     const collection=currentCollection();
+    $('collection-root').textContent=collection?.root ? '目录：'+collection.root+(collection.fixed?' · 自动扫描':'') : '';
+    $('collection-root').title=collection?.root||'';
     const options=(collection?.datasets||[]).map(row=>{
       const label=row.name+' · '+(row.available ? row.episode_count+' 条 · 已标 '+row.annotated_count+' 条' : (row.episode_count?row.episode_count+' 条 · ':'')+(row.status==='needs_preparation'?'待准备：':'不可用：')+row.reason)+(row.archived?' · 只读':'');
       const option=new Option(label,row.id);option.disabled=!row.available;return option;
@@ -49,11 +51,14 @@ export async function mountCollections({info,api,beforeLeave,getKind,isBusy}) {
   async function reload(preferredCollection) {
     catalog=await api('collections?'+new URLSearchParams({kind:getKind()}));
     $('collection-add').hidden=!!catalog.fixed_root;
-    $('collection-select').disabled=!!catalog.fixed_root;
-    $('collection-root').textContent=catalog.fixed_root ? '目录：'+catalog.fixed_root+' · 自动扫描' : '';
+    $('collection-select').disabled=catalog.collections.length<2;
     $('collection-path').readOnly=!!catalog.fixed_root;
     if (catalog.fixed_root) $('collection-path').value=catalog.fixed_root;
-    $('collection-select').replaceChildren(...catalog.collections.map(c=>new Option(c.name,c.id)));
+    $('collection-select').replaceChildren(...catalog.collections.map(c=>{
+      const option=new Option(c.name+(c.root?' · '+c.root:''),c.id);
+      option.title=c.root||'';
+      return option;
+    }));
     const current=catalog.collections.find(c=>c.datasets.some(row=>row.id===info.dataset_id));
     $('collection-select').value=preferredCollection||current?.id||catalog.collections[0]?.id||'';
     showDates();

@@ -162,12 +162,17 @@ class FixedDatasetCatalog(DatasetCatalog):
     def view(self):
         self.synchronize()
         with self.lock:
+            previous = super().view()['collections']
             return {'default_dataset_id':self.default_id,'fixed_root':str(self.fixed_root),
                     'review_root':str(self.review_root) if self.review_root else None,
-                    'scan_interval_seconds':self.scan_interval,'collections':[self.fixed_view()]}
+                    'scan_interval_seconds':self.scan_interval,
+                    'collections':[self.fixed_view(),*[c for c in previous if c['id'] != self.fixed_id]]}
 
     def scan(self, path):
-        if Path(path).expanduser().resolve() != self.fixed_root:
+        root = Path(path).expanduser().resolve()
+        if root != self.fixed_root:
+            if any(Path(c['root']).resolve() == root for c in self.collections if c['id'] != self.fixed_id):
+                return super().scan(path)
             raise ValueError(f'数据合集已固定为 {self.fixed_root}')
         self.synchronize(force=True)
         return self.fixed_view()['datasets']
@@ -179,6 +184,6 @@ class FixedDatasetCatalog(DatasetCatalog):
 
     def refresh(self, collection_id):
         if collection_id != self.fixed_id:
-            raise ValueError('请刷新固定的数据合集')
+            return super().refresh(collection_id)
         self.synchronize(force=True)
         return self.fixed_view()

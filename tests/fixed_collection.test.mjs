@@ -13,7 +13,7 @@ globalThis.window={setInterval(callback,ms){tick=callback;interval=ms;return 77;
   addEventListener(name,callback){if(name==='pagehide')close=callback;},
   clearInterval(id){assert.equal(id,77);cleared=true;}};
 const data={fixed_root:'/data1/huggingface/raw_data',scan_interval_seconds:30,
-  collections:[{id:'fixed',name:'采集数据',datasets:[{id:'default',name:'20261118_144854',available:true,episode_count:6,first_episode:0}]}]};
+  collections:[{id:'fixed',name:'采集数据',root:'/data1/huggingface/raw_data',fixed:true,datasets:[{id:'default',name:'20261118_144854',available:true,episode_count:6,first_episode:0}]}]};
 await mountCollections({info:{dataset_id:'default'},api:async()=>{calls++;return structuredClone(data);},
   beforeLeave:()=>{left++;return true;},getKind:()=> 'subtask',isBusy:()=>editing});
 assert.equal(nodes.get('collection-add').hidden,true);
@@ -32,6 +32,18 @@ assert.equal(nodes.get('date-select').value,'default','Automatic scans retain th
 const option=nodes.get('date-select').children.find(o=>o.value==='fixed:new');
 assert.equal(option.disabled,true);assert.match(option.text,/待准备/);
 assert.equal(left,0,'Background scans must never navigate or persist/switch drafts');
+data.collections.push({id:'previous',name:'历史合集',root:'/data/previous',datasets:[{id:'previous:one',name:'one',available:true,episode_count:2,first_episode:0}]});
+await tick();
+assert.equal(nodes.get('collection-select').disabled,false,'Registered roots must remain selectable in fixed-root mode');
+nodes.get('collection-select').value='previous';nodes.get('collection-select').onchange();
+assert.match(nodes.get('collection-root').textContent,/\/data\/previous/);
+assert.equal(nodes.get('date-select').value,'');
+await tick();
+assert.equal(nodes.get('collection-select').value,'previous','Background scans retain the selected collection path');
+assert.match(nodes.get('collection-root').textContent,/\/data\/previous/);
+nodes.get('collection-select').value='fixed';nodes.get('collection-select').onchange();
+assert.equal(nodes.get('date-select').value,'default');
+assert.match(nodes.get('collection-root').textContent,/自动扫描/);
 close();assert.equal(cleared,true);
 delete globalThis.document;delete globalThis.window;delete globalThis.Option;
 console.log('PASS: fixed root UI, automatic scan, unchanged selection, pending uploads, dropdown/edit protection');

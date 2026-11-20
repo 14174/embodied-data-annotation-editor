@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=25"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>机器人视频标注</title><link rel="stylesheet" href="/editor-static/style.css?v=27"></head>
 <body>
 <div class="top-strip"><strong>机器人数据 · 标注工作台</strong><span>独立样例 · 编辑结果单独保存</span><span id="save-status" role="status">正在加载…</span></div>
 <header><div class="brand"><i></i>Temporal Caption <span>编辑</span></div><div class="header-actions">
@@ -47,7 +47,7 @@
 </div>
 <div class="play-toolbar"><div class="frame-stepper" role="group" aria-label="按帧移动">
   <button id="prev-frame" aria-label="后退指定帧数" title="后退（←），长按连续移动">−</button>
-  <input id="frame-step" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="每步移动帧数">
+  <input id="frame-step" type="number" min="1" step="1" value="10" inputmode="numeric" aria-label="每步移动帧数">
   <span>帧</span>
   <button id="next-frame" aria-label="前进指定帧数" title="前进（→），长按连续移动">＋</button>
 </div><label class="inline"><input type="checkbox" id="loop">区间循环</label><select id="speed" aria-label="播放速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select><button id="mark" class="primary mark">＋ 标注 <kbd>M</kbd></button></div>
@@ -56,7 +56,7 @@
 </section>
 <aside class="panel captions"><div class="aside-header"><strong>SEGMENTS & CAPTIONS <span id="segment-count"></span></strong><label class="inline"><input type="checkbox" id="follow" checked>跟随播放</label></div><div class="source-bar"><select id="source" aria-label="已有标注来源" title="选择后自动加载，跨 Episode 记住当前来源"><option value="flora">FLORA 预标注</option></select><span id="human-annotation-count" role="status" aria-live="polite">人工标注：—</span><button id="import" title="重新读取所选来源的服务器结果">重新加载</button><button id="blank">从零标注</button></div><div class="batch-toolbar"><span id="batch-selection-status" role="status" aria-live="polite" title="先勾起始段，按住 Shift 点击末尾段，可连选中间所有段">已选 0 段</span><button id="select-all-segments" type="button">全选</button><button id="merge-selected" type="button" disabled>合并选中段</button><button id="clear-selection" type="button" disabled>清空选择</button></div><div id="segment-list"></div></aside>
 </main>
-<section class="panel timeline-panel"><div class="section-title"><strong>VIDEO TIMELINE</strong><span id="timeline-hint">相邻标注点自动成段 · 拖动分界线调整两侧区间</span><div><button id="zoom-out" aria-label="缩小时间轴">−</button><span id="zoom-label">1×</span><button id="zoom-in" aria-label="放大时间轴">＋</button></div></div><div id="timeline-scroll"><div id="timeline-content"><div id="ruler"></div><div id="segments-track"></div><div id="playhead"><i></i></div></div></div><div class="timeline-footer"><span id="frame-info"></span><span>首尾固定 · 共享边界 · 按帧吸附</span></div></section>
+<section class="panel timeline-panel"><div class="section-title"><strong>VIDEO TIMELINE</strong><span id="timeline-hint">拖动分段条或时间游标定位 · 拖动分界线调整区间</span><div><button id="zoom-out" aria-label="缩小时间轴">−</button><span id="zoom-label">1×</span><button id="zoom-in" aria-label="放大时间轴">＋</button></div></div><div id="timeline-scroll"><div id="timeline-content"><div id="ruler"></div><div id="segments-track"></div><div id="playhead" title="拖动时间游标定位"><i></i></div></div></div><div class="timeline-footer"><span id="frame-info"></span><span>首尾固定 · 共享边界 · 按帧吸附</span></div></section>
 <details class="panel signals-panel"><summary>机器人状态曲线 <span>与视频时间同步，点击曲线定位</span></summary><div id="signal-options"></div><div id="signal-plots"></div></details>
 <footer><span id="annotation-stats">—</span><span>草稿保存在此浏览器 · 提交后按标注人与类型独立保存</span></footer>
 <dialog id="collection-dialog" aria-labelledby="collection-title">
@@ -95,8 +95,8 @@
   <div class="help-header"><h2 id="help-title">使用说明</h2><button id="close-help" type="button" aria-label="关闭使用说明">关闭 ×</button></div>
   <div class="help-body">
     <p class="help-intro">先选择标注类型和 episode，对照视频核对分段与文字，填写标注人后提交。模型预标注只是起稿，需人工检查。</p>
-    <section><h3>多合集与日期切换</h3><p>顶部选择数据合集，再选择日期数据集。切换前保存当前草稿，各数据集记住最近 episode、标注来源和词表。点击“添加数据合集”登记服务器目录；扫描后勾选日期并确认。“刷新数据集”发现新日期，不自动切换当前页面。“设为只读”保留标注与导出，禁止提交；可取消归档。</p></section>
-    <section><h3>Caption 闭集与自由标注</h3><p>Subtask 每段可从下拉框选择标准 caption，英文原文会填入输入框，也可直接手写。修改为词表之外的内容后显示“自定义”。同一选项可重复使用，不限制操作顺序。顶部可导入 JSON 词表或恢复默认；词表按数据集保存在当前浏览器，跨 episode 使用。更换词表不改已有 caption，选择结果可撤销；完成后仍需提交。</p></section>
+    <section><h3>多合集与日期切换</h3><p>顶部选择数据合集，再选择日期数据集。合集选项和下方展示绝对路径，可切回此前登记的合集；固定自动扫描目录模式也保留已有合集入口。切换前保存当前草稿，各数据集记住最近 episode 和标注来源；词表在当前浏览器全局共用。点击“添加数据合集”登记服务器目录；扫描后勾选日期并确认。“刷新数据集”发现新日期，不自动切换当前页面。“设为只读”保留标注与导出，禁止提交；可取消归档。</p></section>
+    <section><h3>Caption 闭集与自由标注</h3><p>Subtask 每段可从下拉框选择标准 caption，英文原文会填入输入框，也可直接手写。修改为词表之外的内容后显示“自定义”。同一选项可重复使用，不限制操作顺序。顶部可导入 JSON 词表或恢复默认；所选词表在当前浏览器全局保存，跨数据集和 episode 使用；恢复默认同样全局生效。不同机器共享服务端默认词表，个人导入不会自动同步。更换词表不改已有 caption，选择结果可撤销；完成后仍需提交。</p></section>
     <section><h3>1. 署名与“登录”规则</h3>
       <ul>
         <li>当前没有账号密码或登录认证。顶部“标注人”用于提交署名，请每次使用同一个、能区分同事的姓名或代号，避免同名。</li>
@@ -130,8 +130,8 @@
         <tr><td>合并片段</td><td>点击“与上一段合并”，或先勾起始段、按住 Shift 点击末尾段连选中间所有段，再点“合并选中段”；也可点“全选”。首尾范围保持不变，caption 按顺序去重拼接，类别不同时需重新填写。可撤销；不连续的选择无法合并，点“清空选择”重选。</td></tr>
         <tr><td>精简整理</td><td>Subtask 卡片点击“精简整理”，将当前 caption 文本发送给文本模型。预览、修改建议后点“采用建议”；跨对象或描述冲突会提示。只改文字，不改时间，可撤销；仍需自行提交标注。</td></tr>
         <tr><td>多样化改写</td><td>点击“多样化改写”，调整句式和可靠的名词同义词，保持指令式 subtask。检查颜色、对象、左右手与成败信息后采用；不满意可点“换一种表达”，取消不改原文。</td></tr>
-        <tr><td>精确定位</td><td>输入帧步长，短按或长按 −／＋；左右方向键也按该步长移动。分界线获得焦点时，方向键每次微调 1 帧。</td></tr>
-        <tr><td>片段播放</td><td>点击分段框跳到该段起点；勾选“区间循环”重复查看当前选择的片段。</td></tr>
+        <tr><td>精确定位</td><td>默认每步 10 帧，可修改步长，短按或长按 −／＋；左右方向键也按该步长移动。跳帧保持原播放或暂停状态。分界线获得焦点时，方向键每次微调 1 帧。</td></tr>
+        <tr><td>片段播放</td><td>点击或拖动底部分段条、刻度尺或时间游标，按帧定位；点击右侧分段卡片跳到起点。勾选“区间循环”重复查看当前选择的片段。</td></tr>
         <tr><td>撤销／重做</td><td>使用顶部按钮，或 Ctrl／⌘ + Z、Ctrl／⌘ + Shift + Z；文字输入框内保留浏览器自己的编辑快捷键。</td></tr>
       </tbody></table>
       <p class="help-note">输入文字时不会触发播放、打点等页面快捷键。打开本说明会暂停视频，关闭后可手动继续播放。</p>
@@ -185,5 +185,5 @@
   </form>
 </dialog>
 <datalist id="categories"></datalist>
-<script type="module" src="/editor-static/app.mjs?v=32"></script>
+<script type="module" src="/editor-static/app.mjs?v=36"></script>
 </body></html>

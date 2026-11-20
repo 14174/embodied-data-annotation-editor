@@ -1,6 +1,6 @@
 import { splitAt, moveBoundary, mergeAt, mergeSelected } from './segments.mjs?v=19';
 import {validateVocabulary} from './caption-vocabulary.mjs?v=1';
-import {migrateLegacyWorkspace, mountCollections} from './collections.mjs?v=2';
+import {migrateLegacyWorkspace, mountCollections} from './collections.mjs?v=3';
 
 const $ = id => document.getElementById(id);
 const colors = ['#5a95d4', '#5eaf94', '#9e89db', '#d18c77', '#baa265'];
@@ -107,7 +107,8 @@ function persist() {
   }
 }
 
-const vocabularyKey = () => JSON.stringify(['annotation-editor-vocabulary', (info.dataset_id || info.dataset_name), 'subtask']);
+const vocabularyKey = () => JSON.stringify(['annotation-editor-vocabulary-global', 'subtask']);
+const legacyVocabularyKey = () => JSON.stringify(['annotation-editor-vocabulary', (info.dataset_id || info.dataset_name), 'subtask']);
 async function defaultVocabulary() {
   if (info.dataset_id) {
     const value = await api('vocabulary');
@@ -129,8 +130,17 @@ function updateVocabularyControls() {
 async function initializeVocabulary() {
   let message = '';
   try {
-    const stored = localStorage.getItem(vocabularyKey());
-    captionVocabulary = stored ? validateVocabulary(JSON.parse(stored)) : await defaultVocabulary();
+    let stored = localStorage.getItem(vocabularyKey());
+    if (stored === null) {
+      const legacy = localStorage.getItem(legacyVocabularyKey());
+      if (legacy) {
+        const migrated = validateVocabulary(JSON.parse(legacy));
+        localStorage.setItem(vocabularyKey(), JSON.stringify(migrated));
+        stored = JSON.stringify(migrated);
+      }
+    }
+    const value = stored === null ? null : JSON.parse(stored);
+    captionVocabulary = value === null ? await defaultVocabulary() : validateVocabulary(value);
   } catch {
     try {
       captionVocabulary = await defaultVocabulary();
@@ -145,8 +155,8 @@ async function initializeVocabulary() {
 }
 function activateVocabulary(value, reset = false) {
   const next = value === null ? null : validateVocabulary(value);
-  if (reset) localStorage.removeItem(vocabularyKey());
-  else localStorage.setItem(vocabularyKey(), JSON.stringify(next));
+  // A null marker selects the live server default and prevents old dataset imports resurfacing.
+  localStorage.setItem(vocabularyKey(), JSON.stringify(reset ? null : next));
   captionVocabulary = next;
   render();
 }
@@ -157,7 +167,7 @@ async function importVocabularyFile(file) {
   try {
     if (file.size > 1024 * 1024) throw Error('词表文件请控制在 1 MB 以内');
     activateVocabulary(JSON.parse(await file.text()));
-    $('vocabulary-feedback').textContent = '词表已导入并保存在当前浏览器，已有 caption 保持原文。';
+    $('vocabulary-feedback').textContent = '词表已全局选用并保存在当前浏览器，切换数据集继续使用，已有 caption 保持原文。';
   } catch (error) {
     $('vocabulary-feedback').textContent = '导入失败：' + error.message;
   } finally {
@@ -249,8 +259,9 @@ function frameStep() {
 }
 function stepFrames(direction) {
   if (!master()?.readyState) return;
-  videos.forEach(video => video.pause());
-  seek(frame() + direction * frameStep());
+  const target = Math.max(0, Math.min(info.frame_count - 1, frame() + direction * frameStep()));
+  master().loopSegment = segments.find(segment => segment.start_frame <= target && target < segment.end_frame);
+  seek(target);
 }
 function wireFrameButton(button, direction) {
   let delay, interval, pointerId, repeated = false;
@@ -436,6 +447,37 @@ function frameAt(event, element) {
   const rect = element.getBoundingClientRect();
   return Math.round((event.clientX - rect.left) / rect.width * info.frame_count);
 }
+function wireTimelineScrub() {
+  const timeline = $('timeline-content');
+  let pointerId = null;
+  const move = event => {
+    const target = Math.max(0, Math.min(info.frame_count - 1, frameAt(event, timeline)));
+    master().loopSegment = segments.find(segment => segment.start_frame <= target && target < segment.end_frame);
+    seek(target);
+  };
+  timeline.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || pointerId !== null || loading || saving || drag ||
+        !master()?.readyState || event.target.closest('.boundary')) return;
+    pointerId = event.pointerId;
+    timeline.setPointerCapture(pointerId);
+    event.preventDefault();
+    move(event);
+  });
+  timeline.addEventListener('pointermove', event => {
+    if (event.pointerId === pointerId) move(event);
+  });
+  timeline.addEventListener('pointerup', event => {
+    if (event.pointerId !== pointerId) return;
+    move(event);
+    pointerId = null;
+  });
+  const stop = event => {
+    if (event.pointerId === undefined || event.pointerId === pointerId) pointerId = null;
+  };
+  timeline.addEventListener('pointercancel', stop);
+  timeline.addEventListener('lostpointercapture', stop);
+  window.addEventListener('blur', stop);
+}
 function renderTimeline() {
   const track = $('segments-track');
   track.replaceChildren();
@@ -445,7 +487,8 @@ function renderTimeline() {
     block.dataset.segment = i;
     block.style.setProperty('--color',colors[i % colors.length]);
     block.textContent = i + 1;
-    block.onclick = () => selectSegment(i);
+    // Pointer gestures seek to their exact position; keyboard activation keeps segment jumping.
+    block.onclick = event => { if (event.detail === 0) selectSegment(i); };
     track.append(block);
   }
   for (let i=1; i<segments.length; i++) {
@@ -592,7 +635,14 @@ function renderCards() {
         if (loading || saving || drag) return;
         const item = captionVocabulary.items.find(item => item.id === captionSelect.value);
         if (item && item.caption !== segments[i].caption) {
-          change(segments.map((row,index) => index === i ? {...row, caption:item.caption} : row));
+          past.push(snapshot());
+          future = [];
+          segments[i] = {...segments[i], caption:item.caption};
+          caption.value = item.caption;
+          syncCaptionChoice(captionSelect, item.caption);
+          persist();
+          updatePlayback(frame(),true);
+          updateButtons();
         } else syncCaptionChoice(captionSelect, segments[i].caption);
       };
       card.append(captionSelect);
@@ -1202,7 +1252,7 @@ function wire() {
   $('loop').onchange = () => { master().loopSegment = segments[active]; };
   $('mark').onclick = mark;
   $('scrub').oninput = event => seek(Number(event.target.value));
-  $('ruler').onclick = event => seek(frameAt(event,$('ruler')));
+  wireTimelineScrub();
   $('zoom-in').onclick = () => { zoom = Math.min(8,zoom*2); ruler(); };
   $('zoom-out').onclick = () => { zoom = Math.max(1,zoom/2); ruler(); };
   $('undo').onclick = () => restore(past,future);
